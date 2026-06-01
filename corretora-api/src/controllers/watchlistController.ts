@@ -1,15 +1,15 @@
 import { Request, Response } from 'express';
-import { ListaDesejosServico } from '../services/listaDesejosService.js';
+import { WatchlistService } from '../services/watchlistService.js';
 import logger from '../utils/logger.js';
 
-export const getListaDesejos = async (req: Request, res: Response): Promise<void> => {
+export const getWatchlist = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    const result = ListaDesejosServico.getListaDesejos(req.userId);
+    const result = WatchlistService.getWatchlist(req.userId);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Get watchlist error:', error);
@@ -19,7 +19,7 @@ export const getListaDesejos = async (req: Request, res: Response): Promise<void
   }
 };
 
-export const addToListaDesejos = async (req: Request, res: Response): Promise<void> => {
+export const addToWatchlist = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -33,7 +33,7 @@ export const addToListaDesejos = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const result = ListaDesejosServico.addListaDesejos(req.userId, stockId);
+    const result = WatchlistService.addToWatchlist(req.userId, stockId);
     res.status(201).json(result);
   } catch (error) {
     logger.error('Add to watchlist error:', error);
@@ -43,7 +43,7 @@ export const addToListaDesejos = async (req: Request, res: Response): Promise<vo
   }
 };
 
-export const removeDeListaDesejos = async (req: Request, res: Response): Promise<void> => {
+export const removeFromWatchlist = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -57,7 +57,7 @@ export const removeDeListaDesejos = async (req: Request, res: Response): Promise
       return;
     }
 
-    const result = ListaDesejosServico.removeFromWatchlist(req.userId, stockId);
+    const result = WatchlistService.removeFromWatchlist(req.userId, stockId);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Remove from watchlist error:', error);

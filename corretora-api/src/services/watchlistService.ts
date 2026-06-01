@@ -1,10 +1,10 @@
 import db from '../config/database.js';
 import logger from '../utils/logger.js';
 
-export class ListaDesejosServico {
-  static getListaDesejos(userId: number) {
+export class WatchlistService {
+  static getWatchlist(userId: number) {
     try {
-      const ListaDesejos = db.prepare(`
+      const watchlist = db.prepare(`
         SELECT 
           w.id,
           w.stock_id,
@@ -18,7 +18,7 @@ export class ListaDesejosServico {
         ORDER BY s.symbol
       `).all(userId) as any[];
 
-      return ListaDesejos.map(item => ({
+      return watchlist.map(item => ({
         id: item.id,
         stockId: item.stock_id,
         symbol: item.symbol,
@@ -32,7 +32,7 @@ export class ListaDesejosServico {
     }
   }
 
-  static addListaDesejos(userId: number, stockId: number) {
+  static addToWatchlist(userId: number, stockId: number) {
     try {
       // Check if stock exists
       const stock = db.prepare('SELECT id FROM stocks WHERE id = ?').get(stockId);
@@ -40,7 +40,7 @@ export class ListaDesejosServico {
         throw new Error('Stock not found');
       }
 
-      // verifcar se já está na watchlist
+      // Check if already in watchlist
       const existing = db.prepare(
         'SELECT id FROM watchlist WHERE user_id = ? AND stock_id = ?'
       ).get(userId, stockId);
@@ -65,22 +65,22 @@ export class ListaDesejosServico {
     }
   }
 
-  static removeDeListaDesejos(userId: number, stockId: number) {
+  static removeFromWatchlist(userId: number, stockId: number) {
     try {
-      const ListaDesejosItem = db.prepare(
+      const watchlistItem = db.prepare(
         'SELECT id FROM watchlist WHERE user_id = ? AND stock_id = ?'
       ).get(userId, stockId);
 
-      if (!ListaDesejosItem) {
+      if (!watchlistItem) {
         throw new Error('Stock not in watchlist');
       }
 
       db.prepare('DELETE FROM watchlist WHERE user_id = ? AND stock_id = ?')
         .run(userId, stockId);
 
-      return { message: 'Ação removida da lista de desejos' };
+      return { message: 'Stock removed from watchlist' };
     } catch (error) {
-      logger.error('Erro ao remover da lista de desejos:', error);
+      logger.error('Remove from watchlist error:', error);
       throw error;
     }
   }
@@ -93,7 +93,7 @@ export class ListaDesejosServico {
 
       return !!item;
     } catch (error) {
-      logger.error('Erro ao verificar se a ação está na lista de desejos:', error);
+      logger.error('Check watchlist error:', error);
       return false;
     }
   }

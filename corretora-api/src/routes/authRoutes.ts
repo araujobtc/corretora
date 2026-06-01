@@ -1,19 +1,19 @@
 import { Router } from 'express';
 import * as authController from '../controllers/authController.js';
-import { validarRequest } from '../middlewares/validation.js';
-import { autenticarToken } from '../middlewares/auth.js';
+import { validateRequest } from '../middlewares/validation.js';
+import { authenticateToken } from '../middlewares/auth.js';
 import {
-  registroSchema,
+  registerSchema,
   loginSchema,
-  alterarSenhaSchema,
-  resetarSenhaSchema
+  changePasswordSchema,
+  resetPasswordSchema
 } from '../schemas/index.js';
 
 const router = Router();
 
-router.post('/register', validarRequest(registroSchema), authController.registrar);
-router.post('/login', validarRequest(loginSchema), authController.login);
-router.post('/change-password', autenticarToken, validarRequest(alterarSenhaSchema), authController.alterarSenha);
-router.post('/reset-password', validarRequest(resetarSenhaSchema), authController.resetarSenha);
+router.post('/register', validateRequest(registerSchema), authController.register);
+router.post('/login', validateRequest(loginSchema), authController.login);
+router.post('/change-password', authenticateToken, validateRequest(changePasswordSchema), authController.changePassword);
+router.post('/reset-password', validateRequest(resetPasswordSchema), authController.resetPassword);
 
 export default router;

@@ -1,5 +1,5 @@
 import db from '../config/database.js';
-import { criarPedidoInput } from '../schemas/index.js';
+import { CreateOrderInput } from '../schemas/index.js';
 import logger from '../utils/logger.js';
 
 export class OrderService {
@@ -30,7 +30,7 @@ export class OrderService {
       `).get(userId) as any;
 
       return {
-        acoes: orders.map(o => ({
+        orders: orders.map(o => ({
           id: o.id,
           stockId: o.stock_id,
           symbol: o.symbol,
@@ -53,15 +53,15 @@ export class OrderService {
     }
   }
 
-  static createOrder(userId: number, data: criarPedidoInput) {
+  static createOrder(userId: number, data: CreateOrderInput) {
     try {
-      // Get info das ações
+      // Get stock info
       const stock = db.prepare('SELECT current_price FROM stocks WHERE id = ?').get(data.stockId) as any;
       if (!stock) {
-        throw new Error('Ação não encontrada');
+        throw new Error('Stock not found');
       }
 
-      // Get saldo
+      // Get user balance
       const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
       const userBalance = parseFloat(user.balance);
 
@@ -69,21 +69,21 @@ export class OrderService {
 
       if (data.type === 'BUY') {
         if (userBalance < total) {
-          throw new Error('Saldo insuficiente para compra');
+          throw new Error('Insufficient balance for purchase');
         }
       } else if (data.type === 'SELL') {
-        // Verifica se o usuário tem ações suficientes para vender
+        // Check if user has enough shares
         const position = db.prepare(
           'SELECT quantity FROM portfolio WHERE user_id = ? AND stock_id = ?'
         ).get(userId, data.stockId) as any;
 
         if (!position || position.quantity < data.quantity) {
-          throw new Error('Ações insuficientes para venda');
+          throw new Error('Insufficient shares to sell');
         }
       }
 
-      const transacao = db.transaction(() => {
-        // criar pedido
+      const transaction = db.transaction(() => {
+        // Create order
         const result = db.prepare(`
           INSERT INTO orders (user_id, stock_id, type, quantity, price, total, status)
           VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -92,18 +92,18 @@ export class OrderService {
         const orderId = result.lastInsertRowid as number;
 
         if (data.type === 'BUY') {
-          // atualiza saldo do usuário
+          // Update user balance
           db.prepare('UPDATE users SET balance = balance - ? WHERE id = ?')
             .run(total, userId);
 
-          // atualiza ou cria posição na carteira
-          const posicaoExistente = db.prepare(
+          // Update or create portfolio position
+          const existingPosition = db.prepare(
             'SELECT id, quantity, average_price FROM portfolio WHERE user_id = ? AND stock_id = ?'
           ).get(userId, data.stockId) as any;
 
-          if (posicaoExistente) {
-            const newQuantity = posicaoExistente.quantity + data.quantity;
-            const newAveragePrice = ((posicaoExistente.quantity * parseFloat(posicaoExistente.average_price)) + (data.quantity * data.price)) / newQuantity;
+          if (existingPosition) {
+            const newQuantity = existingPosition.quantity + data.quantity;
+            const newAveragePrice = ((existingPosition.quantity * parseFloat(existingPosition.average_price)) + (data.quantity * data.price)) / newQuantity;
 
             db.prepare(`
               UPDATE portfolio SET quantity = ?, average_price = ?, updated_at = CURRENT_TIMESTAMP
@@ -116,47 +116,47 @@ export class OrderService {
             `).run(userId, data.stockId, data.quantity, data.price);
           }
 
-          // Cria registro de transação
+          // Record transaction
           db.prepare(`
             INSERT INTO transactions (user_id, type, amount, description)
             VALUES (?, ?, ?, ?)
-          `).run(userId, 'COMPRAR', total, `Compra de ${data.quantity} ações da ação com ID ${data.stockId}`);
+          `).run(userId, 'BUY', total, `Buy ${data.quantity} shares of stock ID ${data.stockId}`);
         } else if (data.type === 'SELL') {
           // Update user balance
           db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?')
             .run(total, userId);
 
-          // Atualiza posição na carteira
+          // Update portfolio position
           db.prepare(`
             UPDATE portfolio SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
             WHERE user_id = ? AND stock_id = ?
           `).run(data.quantity, userId, data.stockId);
 
-          // Cria registro de transação
+          // Record transaction
           db.prepare(`
             INSERT INTO transactions (user_id, type, amount, description)
             VALUES (?, ?, ?, ?)
-          `).run(userId, 'VENDA', total, `Venda de ${data.quantity} ações da ação com ID ${data.stockId}`);
+          `).run(userId, 'SELL', total, `Sell ${data.quantity} shares of stock ID ${data.stockId}`);
         }
       });
 
-      transacao();
+      transaction();
 
       return {
         id: 1, // Would be the actual order ID from DB
-        message: `${data.type} pedido criado com sucesso`,
+        message: `${data.type} order created successfully`,
         type: data.type,
         quantity: data.quantity,
         price: data.price,
         total
       };
     } catch (error) {
-      logger.error('Erro ao criar pedido:', error);
+      logger.error('Create order error:', error);
       throw error;
     }
   }
 
-  static getHistoricoPedido(userId: number, stockId?: number, limit: number = 50, offset: number = 0) {
+  static getOrderHistory(userId: number, stockId?: number, limit: number = 50, offset: number = 0) {
     try {
       let query = `
         SELECT 
@@ -186,9 +186,9 @@ export class OrderService {
       query += ' ORDER BY o.created_at DESC LIMIT ? OFFSET ?';
       params.push(limit, offset);
 
-      const acoes = db.prepare(query).all(...params) as any[];
+      const orders = db.prepare(query).all(...params) as any[];
 
-      return acoes.map(o => ({
+      return orders.map(o => ({
         id: o.id,
         stockId: o.stock_id,
         symbol: o.symbol,
@@ -202,7 +202,7 @@ export class OrderService {
         updatedAt: o.updated_at
       }));
     } catch (error) {
-      logger.error('Erro ao obter histórico de pedidos:', error);
+      logger.error('Get order history error:', error);
       throw error;
     }
   }

@@ -1,5 +1,5 @@
 import db from '../config/database.js';
-import { DepositoInput, RetiradaInput } from '../schemas/index.js';
+import { DepositInput, WithdrawInput } from '../schemas/index.js';
 import logger from '../utils/logger.js';
 
 export class UserService {
@@ -28,7 +28,7 @@ export class UserService {
     }
   }
 
-  static deposit(userId: number, data: DepositoInput) {
+  static deposit(userId: number, data: DepositInput) {
     try {
       const transaction = db.transaction(() => {
         // Update user balance
@@ -57,7 +57,7 @@ export class UserService {
     }
   }
 
-  static withdraw(userId: number, data: RetiradaInput) {
+  static withdraw(userId: number, data: WithdrawInput) {
     try {
       const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
       const currentBalance = parseFloat(user.balance);

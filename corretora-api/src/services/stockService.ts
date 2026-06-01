@@ -1,20 +1,20 @@
 import db from '../config/database.js';
-import { CreateStockInput, AtualizarPrecoAcaoInput } from '../schemas/index.js';
+import { CreateStockInput, UpdateStockPriceInput } from '../schemas/index.js';
 import logger from '../utils/logger.js';
 
-export class ServicoAcao {
+export class StockService {
   static getAll(limit: number = 50, offset: number = 0) {
     try {
-      const acoes = db.prepare(`
+      const stocks = db.prepare(`
         SELECT id, symbol, name, current_price, created_at, updated_at
         FROM stocks
         LIMIT ? OFFSET ?
       `).all(limit, offset) as any[];
 
-      const contagemAcoes = db.prepare('SELECT COUNT(*) as count FROM stocks').get() as any;
+      const countResult = db.prepare('SELECT COUNT(*) as count FROM stocks').get() as any;
 
       return {
-        acoes: acoes.map(s => ({
+        stocks: stocks.map(s => ({
           id: s.id,
           symbol: s.symbol,
           name: s.name,
@@ -22,7 +22,7 @@ export class ServicoAcao {
           createdAt: s.created_at,
           updatedAt: s.updated_at
         })),
-        total: contagemAcoes.count,
+        total: countResult.count,
         limit,
         offset
       };
@@ -82,7 +82,7 @@ export class ServicoAcao {
     }
   }
 
-  static criar(data: CreateStockInput) {
+  static create(data: CreateStockInput) {
     try {
       const existingStock = db.prepare('SELECT id FROM stocks WHERE symbol = ?').get(data.symbol);
       if (existingStock) {
@@ -106,11 +106,11 @@ export class ServicoAcao {
     }
   }
 
-  static atualizarPreco(stockId: number, data: AtualizarPrecoAcaoInput) {
+  static updatePrice(stockId: number, data: UpdateStockPriceInput) {
     try {
       const stock = db.prepare('SELECT id FROM stocks WHERE id = ?').get(stockId);
       if (!stock) {
-        throw new Error('Acao não encontrada');
+        throw new Error('Stock not found');
       }
 
       db.prepare(`
@@ -123,12 +123,12 @@ export class ServicoAcao {
         currentPrice: data.currentPrice
       };
     } catch (error) {
-      logger.error('Erro ao atualizar preço da ação:', error);
+      logger.error('Update stock price error:', error);
       throw error;
     }
   }
 
-  static buscar(query: string) {
+  static search(query: string) {
     try {
       const stocks = db.prepare(`
         SELECT id, symbol, name, current_price, created_at, updated_at
@@ -146,7 +146,7 @@ export class ServicoAcao {
         updatedAt: s.updated_at
       }));
     } catch (error) {
-      logger.error('Pesquisa de ações falhou:', error);
+      logger.error('Search stocks error:', error);
       throw error;
     }
   }

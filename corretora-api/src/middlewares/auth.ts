@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import logger from '../utils/logger.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 declare global {
   namespace Express {
@@ -13,12 +13,12 @@ declare global {
   }
 }
 
-export function autenticarToken(req: Request, res: Response, next: NextFunction): void {
+export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    res.status(401).json({ error: 'Token de acesso necessário' });
+    res.status(401).json({ error: 'Access token required' });
     return;
   }
 
@@ -28,12 +28,12 @@ export function autenticarToken(req: Request, res: Response, next: NextFunction)
     req.user = { id: decoded.userId, email: decoded.email, name: decoded.name };
     next();
   } catch (error) {
-    logger.error('Verificação de token falhou:', error);
-    res.status(403).json({ error: 'Token inválido ou expirado' });
+    logger.error('Token verification failed:', error);
+    res.status(403).json({ error: 'Invalid or expired token' });
   }
 }
 
-export function gerarToken(userId: number, email: string, name: string): string {
+export function generateToken(userId: number, email: string, name: string): string {
   return jwt.sign(
     { userId, email, name },
     JWT_SECRET,

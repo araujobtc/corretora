@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { OrderService } from '../services/pedidoServico.js';
+import { OrderService } from '../services/orderService.js';
 import logger from '../utils/logger.js';
 
 export const getOrders = async (req: Request, res: Response): Promise<void> => {
@@ -50,7 +50,7 @@ export const getOrderHistory = async (req: Request, res: Response): Promise<void
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
     const offset = parseInt(req.query.offset as string) || 0;
 
-    const result = OrderService.getHistoricoPedido(req.userId, stockId, limit, offset);
+    const result = OrderService.getOrderHistory(req.userId, stockId, limit, offset);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Get order history error:', error);

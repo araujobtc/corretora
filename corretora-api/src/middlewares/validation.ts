@@ -2,17 +2,17 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodSchema } from 'zod';
 import logger from '../utils/logger.js';
 
-export function validarRequest(schema: ZodSchema) {
+export function validateRequest(schema: ZodSchema) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
-      const validado = schema.parse(req.body);
-      req.body = validado;
+      const validated = schema.parse(req.body);
+      req.body = validated;
       next();
     } catch (error) {
-      logger.error('Erro de validação:', error);
+      logger.error('Validation error:', error);
       res.status(400).json({
-        error: 'Validação falhou',
-        details: error instanceof Error ? error.message : 'Erro desconhecido'
+        error: 'Validation failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   };

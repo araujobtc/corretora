@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { UserService } from '../services/userServico.js';
+import { UserService } from '../services/userService.js';
 import logger from '../utils/logger.js';
 
 export const getMe = async (req: Request, res: Response): Promise<void> => {

@@ -1,67 +1,67 @@
 import { z } from 'zod';
 
 // Auth Schemas
-export const registroSchema = z.object({
-  name: z.string().min(3, 'Nome precisa ter pelo menos 3 caracteres'),
-  email: z.string().email('Email inválido'),
-  password: z.string().min(6, 'Senha precisa ter pelo menos 6 caracteres')
+export const registerSchema = z.object({
+  name: z.string().min(3, 'Name must be at least 3 characters'),
+  email: z.string().email('Invalid email'),
+  password: z.string().min(6, 'Password must be at least 6 characters')
 });
 
 export const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
-  password: z.string().min(6, 'Senha precisa ter pelo menos 6 caracteres')
+  email: z.string().email('Invalid email'),
+  password: z.string().min(6, 'Password must be at least 6 characters')
 });
 
-export const alterarSenhaSchema = z.object({
-  currentPassword: z.string().min(6, 'Senha atual precisa ter pelo menos 6 caracteres'),
-  newPassword: z.string().min(6, 'Nova senha precisa ter pelo menos 6 caracteres')
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(6),
+  newPassword: z.string().min(6, 'Password must be at least 6 characters')
 });
 
-export const resetarSenhaSchema = z.object({
-  email: z.string().email('Email inválido')
+export const resetPasswordSchema = z.object({
+  email: z.string().email('Invalid email')
 });
 
 // User Schemas
-export const depositoSchema = z.object({
-  amount: z.number().positive('Valor deve ser positivo')
+export const depositSchema = z.object({
+  amount: z.number().positive('Amount must be positive')
 });
 
-export const retiradaSchema = z.object({
-  amount: z.number().positive('Valor deve ser positivo')
+export const withdrawSchema = z.object({
+  amount: z.number().positive('Amount must be positive')
 });
 
 // Stock Schemas
-export const criarAcaoSchema = z.object({
+export const createStockSchema = z.object({
   symbol: z.string().min(1, 'Symbol is required'),
-  name: z.string().min(1, 'Nome é obrigatório'),
-  currentPrice: z.number().positive('Preço atual deve ser positivo')
+  name: z.string().min(1, 'Name is required'),
+  currentPrice: z.number().positive('Price must be positive')
 });
 
-export const atualizarPrecoAcaoSchema = z.object({
-  currentPrice: z.number().positive('Preço atual deve ser positivo')
+export const updateStockPriceSchema = z.object({
+  currentPrice: z.number().positive('Price must be positive')
 });
 
 // Order Schemas
-export const criarPedidoSchema = z.object({
-  stockId: z.number().positive('Id da ação é obrigatório'),
-  type: z.enum(['COMPRA', 'VENDA'], { errorMap: () => ({ message: 'Deve ser COMPRA ou VENDA' }) }),
-  quantity: z.number().positive('Quantidade deve ser positiva'),
-  price: z.number().positive('Preço deve ser positivo')
+export const createOrderSchema = z.object({
+  stockId: z.number().positive('Stock ID is required'),
+  type: z.enum(['BUY', 'SELL'], { errorMap: () => ({ message: 'Type must be BUY or SELL' }) }),
+  quantity: z.number().positive('Quantity must be positive'),
+  price: z.number().positive('Price must be positive')
 });
 
 // Watchlist Schemas
-export const addListaDesejosSchema = z.object({
-  stockId: z.number().positive('Id da ação é obrigatório')
+export const addToWatchlistSchema = z.object({
+  stockId: z.number().positive('Stock ID is required')
 });
 
 // Types
-export type RegistroInput = z.infer<typeof registroSchema>;
+export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-export type AlterarSenhaInput = z.infer<typeof alterarSenhaSchema>;
-export type ResetarSenhaInput = z.infer<typeof resetarSenhaSchema>;
-export type DepositoInput = z.infer<typeof depositoSchema>;
-export type RetiradaInput = z.infer<typeof retiradaSchema>;
-export type CreateStockInput = z.infer<typeof criarAcaoSchema>;
-export type AtualizarPrecoAcaoInput = z.infer<typeof atualizarPrecoAcaoSchema>;
-export type CriarPedidoInput = z.infer<typeof criarPedidoSchema>;
-export type AddListaDesejosInput = z.infer<typeof addListaDesejosSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type DepositInput = z.infer<typeof depositSchema>;
+export type WithdrawInput = z.infer<typeof withdrawSchema>;
+export type CreateStockInput = z.infer<typeof createStockSchema>;
+export type UpdateStockPriceInput = z.infer<typeof updateStockPriceSchema>;
+export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+export type AddToWatchlistInput = z.infer<typeof addToWatchlistSchema>;

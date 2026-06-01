@@ -1,10 +1,10 @@
 import db from '../config/database.js';
 import logger from '../utils/logger.js';
 
-export class CarteiraService {
-  static getCarteira(userId: number) {
+export class PortfolioService {
+  static getPortfolio(userId: number) {
     try {
-      const carteira = db.prepare(`
+      const portfolio = db.prepare(`
         SELECT 
           p.id,
           p.stock_id,
@@ -25,13 +25,13 @@ export class CarteiraService {
         ORDER BY s.symbol
       `).all(userId) as any[];
 
-      const totalInvested = carteira.reduce((sum, item) => sum + parseFloat(item.invested_value || 0), 0);
-      const totalCurrent = carteira.reduce((sum, item) => sum + parseFloat(item.current_value || 0), 0);
+      const totalInvested = portfolio.reduce((sum, item) => sum + parseFloat(item.invested_value || 0), 0);
+      const totalCurrent = portfolio.reduce((sum, item) => sum + parseFloat(item.current_value || 0), 0);
       const totalGainLoss = totalCurrent - totalInvested;
       const totalGainLossPercent = totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0;
 
       return {
-        positions: carteira.map(item => ({
+        positions: portfolio.map(item => ({
           id: item.id,
           stockId: item.stock_id,
           symbol: item.symbol,
@@ -54,12 +54,12 @@ export class CarteiraService {
         }
       };
     } catch (error) {
-      logger.error('Erro ao obter carteira:', error);
+      logger.error('Get portfolio error:', error);
       throw error;
     }
   }
 
-  static getPosicao(userId: number, stockId: number) {
+  static getPosition(userId: number, stockId: number) {
     try {
       const position = db.prepare(`
         SELECT 
@@ -78,7 +78,7 @@ export class CarteiraService {
       `).get(userId, stockId) as any;
 
       if (!position || position.quantity === 0) {
-        throw new Error('Posição não encontrada');
+        throw new Error('Position not found');
       }
 
       return {
@@ -96,7 +96,7 @@ export class CarteiraService {
         updatedAt: position.updated_at
       };
     } catch (error) {
-      logger.error('Erro ao obter posição:', error);
+      logger.error('Get position error:', error);
       throw error;
     }
   }

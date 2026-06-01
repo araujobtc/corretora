@@ -9,10 +9,10 @@ import { seedDatabase } from './seed.js';
 import healthRoutes from './routes/healthRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
-import stockRoutes from './routes/acaoRoutes.js';
-import portfolioRoutes from './routes/carteiraRoutes.js';
-import orderRoutes from './routes/pedidoRoutes.js';
-import watchlistRoutes from './routes/listaDesejosRoutes.js';
+import stockRoutes from './routes/stockRoutes.js';
+import portfolioRoutes from './routes/portfolioRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
+import watchlistRoutes from './routes/watchlistRoutes.js';
 
 const app: Express = express();
 
