@@ -12,9 +12,9 @@ export const getWatchlist = async (req: Request, res: Response): Promise<void> =
     const result = WatchlistService.getWatchlist(req.userId);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Erro ao obter lista de cotações :', erro);
+    logger.error('Erro ao obter lista de cotações :', error);
     res.status(400).json({
-      error: erro instanceof Error ? erro.message : 'Falha ao obter lista de cotações'
+      error: error instanceof Error ? error.message : 'Falha ao obter lista de cotações'
     });
   }
 };
@@ -36,9 +36,9 @@ export const addToWatchlist = async (req: Request, res: Response): Promise<void>
     const result = WatchlistService.addToWatchlist(req.userId, stockId);
     res.status(201).json(result);
   } catch (error) {
-    logger.error('Erro ao adicionar à lista de cotações:', erro);
+    logger.error('Erro ao adicionar à lista de cotações:', error);
     res.status(400).json({
-      error: erro instanceof Error ? erro.message : 'Falha ao adicionar à lista de cotações'
+      error: error instanceof Error ? error.message : 'Falha ao adicionar à lista de cotações'
     });
   }
 };
