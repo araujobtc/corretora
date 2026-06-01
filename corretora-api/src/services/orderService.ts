@@ -48,7 +48,7 @@ export class OrderService {
         offset
       };
     } catch (error) {
-      logger.error('Get orders error:', error);
+      logger.error('Erro ao obter ordens:', error);
       throw error;
     }
   }
@@ -58,7 +58,7 @@ export class OrderService {
       // Get stock info
       const stock = db.prepare('SELECT current_price FROM stocks WHERE id = ?').get(data.stockId) as any;
       if (!stock) {
-        throw new Error('Stock not found');
+        throw new Error('Ação não encontrada');
       }
 
       // Get user balance
@@ -69,7 +69,7 @@ export class OrderService {
 
       if (data.type === 'BUY') {
         if (userBalance < total) {
-          throw new Error('Insufficient balance for purchase');
+          throw new Error('Saldo insuficiente para compra');
         }
       } else if (data.type === 'SELL') {
         // Check if user has enough shares
@@ -78,7 +78,7 @@ export class OrderService {
         ).get(userId, data.stockId) as any;
 
         if (!position || position.quantity < data.quantity) {
-          throw new Error('Insufficient shares to sell');
+          throw new Error('Ações insuficientes para vender');
         }
       }
 
@@ -120,7 +120,7 @@ export class OrderService {
           db.prepare(`
             INSERT INTO transactions (user_id, type, amount, description)
             VALUES (?, ?, ?, ?)
-          `).run(userId, 'BUY', total, `Buy ${data.quantity} shares of stock ID ${data.stockId}`);
+          `).run(userId, 'BUY', total, `Comprar ${data.quantity} ações de ID ${data.stockId}`);
         } else if (data.type === 'SELL') {
           // Update user balance
           db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?')
@@ -136,7 +136,7 @@ export class OrderService {
           db.prepare(`
             INSERT INTO transactions (user_id, type, amount, description)
             VALUES (?, ?, ?, ?)
-          `).run(userId, 'SELL', total, `Sell ${data.quantity} shares of stock ID ${data.stockId}`);
+          `).run(userId, 'SELL', total, `Vender ${data.quantity} ações de ID ${data.stockId}`);
         }
       });
 
@@ -144,14 +144,14 @@ export class OrderService {
 
       return {
         id: 1, // Would be the actual order ID from DB
-        message: `${data.type} order created successfully`,
+        message: `Ordem de ${data.type} criada com sucesso`,
         type: data.type,
         quantity: data.quantity,
         price: data.price,
         total
       };
     } catch (error) {
-      logger.error('Create order error:', error);
+      logger.error('Erro ao criar ordem:', error);
       throw error;
     }
   }
@@ -202,7 +202,7 @@ export class OrderService {
         updatedAt: o.updated_at
       }));
     } catch (error) {
-      logger.error('Get order history error:', error);
+      logger.error('Erro ao obter histórico de ordens:', error);
       throw error;
     }
   }

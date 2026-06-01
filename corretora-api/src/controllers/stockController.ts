@@ -10,10 +10,8 @@ export const getStocks = async (req: Request, res: Response): Promise<void> => {
     const result = StockService.getAll(limit, offset);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get stocks error:', error);
-    res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to get stocks'
-    });
+    logger.error('Erro ao buscar ações:', error);
+    res.status(502).json({ error: error instanceof Error ? error.message : 'Falha ao buscar ações da API do professor' });
   }
 };
 
@@ -22,16 +20,16 @@ export const getStock = async (req: Request, res: Response): Promise<void> => {
     const stockId = parseInt(req.params.id);
 
     if (isNaN(stockId)) {
-      res.status(400).json({ error: 'Invalid stock ID' });
+      res.status(400).json({ error: 'Ação não encontrada' });
       return;
     }
 
     const result = StockService.getById(stockId);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get stock error:', error);
+    logger.error('Erro ao obter ação:', error);
     res.status(404).json({
-      error: error instanceof Error ? error.message : 'Stock not found'
+      error: error instanceof Error ? error.message : 'Ação não encontrada'
     });
   }
 };
@@ -43,10 +41,8 @@ export const getStockBySymbol = async (req: Request, res: Response): Promise<voi
     const result = StockService.getBySymbol(symbol);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get stock by symbol error:', error);
-    res.status(404).json({
-      error: error instanceof Error ? error.message : 'Stock not found'
-    });
+    logger.error('Erro ao obter ação por ticker:', error);
+    res.status(404).json({ error: error instanceof Error ? error.message : 'Ação não encontrada' });
   }
 };
 
@@ -55,9 +51,9 @@ export const createStock = async (req: Request, res: Response): Promise<void> =>
     const result = StockService.create(req.body);
     res.status(201).json(result);
   } catch (error) {
-    logger.error('Create stock error:', error);
+    logger.error('Erro ao criar ação:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to create stock'
+      error: error instanceof Error ? error.message : 'Falha ao criar ação'
     });
   }
 };
@@ -67,16 +63,16 @@ export const updateStockPrice = async (req: Request, res: Response): Promise<voi
     const stockId = parseInt(req.params.id);
 
     if (isNaN(stockId)) {
-      res.status(400).json({ error: 'Invalid stock ID' });
+      res.status(400).json({ error: 'Ação não encontrada' });
       return;
     }
 
     const result = StockService.updatePrice(stockId, req.body);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Update stock price error:', error);
+    logger.error('Falha ao atualizar o preço da ação:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to update stock price'
+      error: error instanceof Error ? error.message : 'Falha ao atualizar o preço da ação'
     });
   }
 };
@@ -86,16 +82,14 @@ export const searchStocks = async (req: Request, res: Response): Promise<void> =
     const query = req.query.q as string;
 
     if (!query || query.length < 1) {
-      res.status(400).json({ error: 'Query parameter required' });
+      res.status(400).json({ error: 'Paramêtro obrigatório' });
       return;
     }
 
     const result = StockService.search(query);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Search stocks error:', error);
-    res.status(400).json({
-      error: error instanceof Error ? error.message : 'Search failed'
-    });
+    logger.error('Erro ao buscar ações:', error);
+    res.status(502).json({ error: error instanceof Error ? error.message : 'Falha na busca de ações' });
   }
 };

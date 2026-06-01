@@ -11,8 +11,8 @@ export function validateRequest(schema: ZodSchema) {
     } catch (error) {
       logger.error('Validation error:', error);
       res.status(400).json({
-        error: 'Validation failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Validação falhou',
+        details: error instanceof Error ? error.message : 'Erro desconhecido'
       });
     }
   };

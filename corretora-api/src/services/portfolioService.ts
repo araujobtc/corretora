@@ -54,7 +54,7 @@ export class PortfolioService {
         }
       };
     } catch (error) {
-      logger.error('Get portfolio error:', error);
+      logger.error('Erro ao obter carteira:', error);
       throw error;
     }
   }
@@ -78,7 +78,7 @@ export class PortfolioService {
       `).get(userId, stockId) as any;
 
       if (!position || position.quantity === 0) {
-        throw new Error('Position not found');
+        throw new Error('Posição não encontrada');
       }
 
       return {
@@ -96,7 +96,7 @@ export class PortfolioService {
         updatedAt: position.updated_at
       };
     } catch (error) {
-      logger.error('Get position error:', error);
+      logger.error('Erro ao obter posição:', error);
       throw error;
     }
   }

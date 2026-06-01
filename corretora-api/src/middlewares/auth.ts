@@ -18,7 +18,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    res.status(401).json({ error: 'Access token required' });
+    res.status(401).json({ error: 'Token de acesso necessário ' });
     return;
   }
 
@@ -28,8 +28,8 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     req.user = { id: decoded.userId, email: decoded.email, name: decoded.name };
     next();
   } catch (error) {
-    logger.error('Token verification failed:', error);
-    res.status(403).json({ error: 'Invalid or expired token' });
+    logger.error('Verificação de token falhou :', erro);
+    res.status(403).json({ error: 'Token inválido ou expiradodo' });
   }
 }
 

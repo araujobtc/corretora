@@ -27,7 +27,7 @@ export class StockService {
         offset
       };
     } catch (error) {
-      logger.error('Get stocks error:', error);
+      logger.error('Erro ao obter ações:', error);
       throw error;
     }
   }
@@ -40,7 +40,7 @@ export class StockService {
       `).get(stockId) as any;
 
       if (!stock) {
-        throw new Error('Stock not found');
+        throw new Error('Ação não encontrada');
       }
 
       return {
@@ -52,7 +52,7 @@ export class StockService {
         updatedAt: stock.updated_at
       };
     } catch (error) {
-      logger.error('Get stock error:', error);
+      logger.error('Erro ao obter ação:', error);
       throw error;
     }
   }
@@ -65,7 +65,7 @@ export class StockService {
       `).get(symbol) as any;
 
       if (!stock) {
-        throw new Error('Stock not found');
+        throw new Error('Ação não encontrada');
       }
 
       return {
@@ -77,7 +77,7 @@ export class StockService {
         updatedAt: stock.updated_at
       };
     } catch (error) {
-      logger.error('Get stock by symbol error:', error);
+      logger.error('Erro ao obter ação pelo ticker:', error);
       throw error;
     }
   }
@@ -86,7 +86,7 @@ export class StockService {
     try {
       const existingStock = db.prepare('SELECT id FROM stocks WHERE symbol = ?').get(data.symbol);
       if (existingStock) {
-        throw new Error('Stock with this symbol already exists');
+        throw new Error('Já existe uma ação com esse ticker');
       }
 
       const result = db.prepare(`
@@ -101,7 +101,7 @@ export class StockService {
         currentPrice: data.currentPrice
       };
     } catch (error) {
-      logger.error('Create stock error:', error);
+      logger.error('Erro ao criar ação:', error);
       throw error;
     }
   }
@@ -110,7 +110,7 @@ export class StockService {
     try {
       const stock = db.prepare('SELECT id FROM stocks WHERE id = ?').get(stockId);
       if (!stock) {
-        throw new Error('Stock not found');
+        throw new Error('Ação não encontrada');
       }
 
       db.prepare(`
@@ -123,7 +123,7 @@ export class StockService {
         currentPrice: data.currentPrice
       };
     } catch (error) {
-      logger.error('Update stock price error:', error);
+      logger.error('Erro ao atualizar preço da ação:', error);
       throw error;
     }
   }
@@ -146,7 +146,7 @@ export class StockService {
         updatedAt: s.updated_at
       }));
     } catch (error) {
-      logger.error('Search stocks error:', error);
+      logger.error('Erro ao buscar ações:', error);
       throw error;
     }
   }

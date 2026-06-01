@@ -10,7 +10,7 @@ export class AuthService {
       // Check if user already exists
       const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(data.email);
       if (existingUser) {
-        throw new Error('Email already registered');
+        throw new Error('E-mail já cadastrado');
       }
 
       const passwordHash = bcrypt.hashSync(data.password, 10);
@@ -31,7 +31,7 @@ export class AuthService {
         token
       };
     } catch (error) {
-      logger.error('Register error:', error);
+      logger.error('Erro ao registrar usuário:', error);
       throw error;
     }
   }
@@ -44,12 +44,12 @@ export class AuthService {
       `).get(data.email) as any;
 
       if (!user) {
-        throw new Error('Invalid email or password');
+        throw new Error('Email ou senha inválidos');
       }
 
       const isPasswordValid = bcrypt.compareSync(data.password, user.password_hash);
       if (!isPasswordValid) {
-        throw new Error('Invalid email or password');
+        throw new Error('Email ou senha inválidos');
       }
 
       const token = generateToken(user.id, user.email, user.name);
@@ -62,7 +62,7 @@ export class AuthService {
         token
       };
     } catch (error) {
-      logger.error('Login error:', error);
+      logger.error('Erro ao fazer login:', error);
       throw error;
     }
   }
@@ -72,12 +72,12 @@ export class AuthService {
       const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId) as any;
 
       if (!user) {
-        throw new Error('User not found');
+        throw new Error('Usuário não encontrado');
       }
 
       const isPasswordValid = bcrypt.compareSync(data.currentPassword, user.password_hash);
       if (!isPasswordValid) {
-        throw new Error('Current password is incorrect');
+        throw new Error('Senha incorreta');
       }
 
       const newPasswordHash = bcrypt.hashSync(data.newPassword, 10);
@@ -85,9 +85,9 @@ export class AuthService {
       db.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
         .run(newPasswordHash, userId);
 
-      return { message: 'Password changed successfully' };
+      return { message: 'Senha alterada com sucesso' };
     } catch (error) {
-      logger.error('Change password error:', error);
+      logger.error('Erro ao alterar senha:', error);
       throw error;
     }
   }
@@ -102,11 +102,11 @@ export class AuthService {
       }
 
       // In a real application, you would generate a reset token and send it via email
-      logger.info(`Password reset requested for email: ${email}`);
+      logger.info(`Pedido de alteração de senha enviado para email: ${email}`);
 
-      return { message: 'If the email exists, a password reset link has been sent' };
+      return { message: 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.' };
     } catch (error) {
-      logger.error('Reset password error:', error);
+      logger.error('Erro ao redefinir senha:', error);
       throw error;
     }
   }

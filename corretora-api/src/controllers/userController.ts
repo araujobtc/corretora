@@ -12,9 +12,9 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
     const result = UserService.getMe(req.userId);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get me error:', error);
+    logger.error('Erro ao obter usuário:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to get user'
+      error: error instanceof Error ? error.message : 'Falha ao obter usuário'
     });
   }
 };
@@ -29,9 +29,9 @@ export const deposit = async (req: Request, res: Response): Promise<void> => {
     const result = UserService.deposit(req.userId, req.body);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Deposit error:', error);
+    logger.error('Erro ao fazer depósito:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Deposit failed'
+      error: error instanceof Error ? error.message : 'Falha ao fazer depósito'
     });
   }
 };
@@ -46,9 +46,9 @@ export const withdraw = async (req: Request, res: Response): Promise<void> => {
     const result = UserService.withdraw(req.userId, req.body);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Withdraw error:', error);
+    logger.error('Erro ao fazer saque:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Withdrawal failed'
+      error: error instanceof Error ? error.message : 'Falha ao fazer saque'
     });
   }
 };
@@ -66,9 +66,9 @@ export const getTransactions = async (req: Request, res: Response): Promise<void
     const result = UserService.getTransactions(req.userId, limit, offset);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get transactions error:', error);
+    logger.error('Erro ao obter transações:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to get transactions'
+      error: error instanceof Error ? error.message : 'Falha ao obter transações'
     });
   }
 };
