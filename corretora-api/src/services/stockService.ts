@@ -77,45 +77,20 @@ export class StockService {
       }));
   }
 
-  export const getPricesByMinuto = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const stockId = parseInt(req.params.id);
-
-    if (isNaN(stockId)) {
-      res.status(400).json({ error: 'Ação não encontrada' });
-      return;
-    }
-
-    const minuto = parseInt(req.params.minuto);
-    if (isNaN(minuto) || minuto < 0 || minuto > 59) {
-      res.status(400).json({ error: 'Minuto deve ser um número entre 0 e 59' });
-      return;
-    }
-
-    const result = await StockService.getPricesByMinuto(minuto);
-    res.status(200).json(result);
-  } catch (error) {
-    
-    logger.error('Erro ao obter preços por minuto:', error);
-    res.status(502).json({ error: error instanceof Error ? error.message : 'Falha ao buscar preços' });
+  /** Retorna os preços do pregão para um minuto específico (0–59) */
+  static async getPricesByMinuto(minuto: number): Promise<PrecoTicker[]> {
+    const url = `${PROFESSOR_BASE}/${minuto}.json`;
+    logger.info(`Buscando preços do minuto ${minuto}: ${url}`);
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Falha ao buscar preços do minuto ${minuto}: ${resp.status}`);
+    return (await resp.json()) as PrecoTicker[];
   }
-};
 
-export const getPriceBySymbolAndMinuto = async (req: Request, res: Response): Promise<void> => {
-  try {
-    
-    const { symbol } = req.params;
-    const minuto = parseInt(req.params.minuto);
-    if (isNaN(minuto) || minuto < 0 || minuto > 59) {
-      res.status(400).json({ error: 'Minuto deve ser um número entre 0 e 59' });
-      return;
-    }
-
-    const result = await StockService.getPriceBySymbolAndMinuto(symbol, minuto);
-    res.status(200).json(result);
-  } catch (error) {
-    
-    logger.error('Get price by symbol/minuto error:', error);
-    res.status(404).json({ error: error instanceof Error ? error.message : 'Preço não encontrado' });
+  /** Retorna o preço atual de um ticker em um minuto específico */
+  static async getPriceBySymbolAndMinuto(symbol: string, minuto: number) {
+    const precos = await StockService.getPricesByMinuto(minuto);
+    const entry = precos.find(p => p.ticker.toUpperCase() === symbol.toUpperCase());
+    if (!entry) throw new Error(`Ticker ${symbol} não encontrado no minuto ${minuto}`);
+    return entry;
   }
-};
+}
