@@ -27,7 +27,7 @@ export class WatchlistService {
         addedAt: item.created_at
       }));
     } catch (error) {
-      logger.error('Get watchlist error:', error);
+      logger.error('Erro ao obter lista de cotações:', error);
       throw error;
     }
   }
@@ -37,7 +37,7 @@ export class WatchlistService {
       // Check if stock exists
       const stock = db.prepare('SELECT id FROM stocks WHERE id = ?').get(stockId);
       if (!stock) {
-        throw new Error('Stock not found');
+        throw new Error('Ação não encontrada');
       }
 
       // Check if already in watchlist
@@ -46,7 +46,7 @@ export class WatchlistService {
       ).get(userId, stockId);
 
       if (existing) {
-        throw new Error('Stock already in watchlist');
+        throw new Error('Ação já está na lista de cotações');
       }
 
       const result = db.prepare(`
@@ -57,10 +57,10 @@ export class WatchlistService {
       return {
         id: result.lastInsertRowid as number,
         stockId,
-        message: 'Stock added to watchlist'
+        message: 'Ação adicionada à lista de cotações'
       };
     } catch (error) {
-      logger.error('Add to watchlist error:', error);
+      logger.error('Erro ao adicionar à lista de cotações:', error);
       throw error;
     }
   }
@@ -72,15 +72,15 @@ export class WatchlistService {
       ).get(userId, stockId);
 
       if (!watchlistItem) {
-        throw new Error('Stock not in watchlist');
+        throw new Error('Ação na está na lista de cotações');
       }
 
       db.prepare('DELETE FROM watchlist WHERE user_id = ? AND stock_id = ?')
         .run(userId, stockId);
 
-      return { message: 'Stock removed from watchlist' };
+      return { message: 'Ação removida da lista de cotações' };
     } catch (error) {
-      logger.error('Remove from watchlist error:', error);
+      logger.error('Erro ao remover da lista de cotações:', error);
       throw error;
     }
   }
@@ -93,7 +93,7 @@ export class WatchlistService {
 
       return !!item;
     } catch (error) {
-      logger.error('Check watchlist error:', error);
+      logger.error('Erro ao verificar se a lista de cotações possui uma ação:', error);
       return false;
     }
   }

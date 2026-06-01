@@ -2,6 +2,26 @@ import logger from '../utils/logger.js';
 
 const PROFESSOR_BASE = 'https://raw.githubusercontent.com/marciobarros/dsw-simulador-corretora/refs/heads/main';
 
+
+      return {
+        stocks: stocks.map(s => ({
+          id: s.id,
+          symbol: s.symbol,
+          name: s.name,
+          currentPrice: parseFloat(s.current_price),
+          createdAt: s.created_at,
+          updatedAt: s.updated_at
+        })),
+        total: countResult.count,
+        limit,
+        offset
+      };
+    } catch (error) {
+      logger.error('Erro ao obter ações:', error);
+      throw error;
+    }
+  }
+
 export interface Ticker {
   ticker: string;
   fechamento: number;
@@ -11,6 +31,24 @@ export interface PrecoTicker {
   ticker: string;
   preco: number;
 }
+
+
+      if (!stock) {
+        throw new Error('Ação não encontrada');
+      }
+
+      return {
+        id: stock.id,
+        symbol: stock.symbol,
+        name: stock.name,
+        currentPrice: parseFloat(stock.current_price),
+        createdAt: stock.created_at,
+        updatedAt: stock.updated_at
+      };
+    } catch (error) {
+      logger.error('Erro ao obter ação:', error);
+      throw error;
+    }
 
 // Cache simples em memória para não bater na API do professor a cada request
 let tickersCache: Ticker[] | null = null;
@@ -28,53 +66,68 @@ async function fetchTickers(): Promise<Ticker[]> {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Falha ao buscar tickers: ${resp.status}`);
 
-  tickersCache = (await resp.json()) as Ticker[];
-  tickersCacheAt = now;
-  return tickersCache;
-}
+      if (!stock) {
+        throw new Error('Ação não encontrada');
+      }
 
-export class StockService {
-  /** Lista todas as ações com preço de fechamento (da API do professor) */
-  static async getAll(limit = 50, offset = 0) {
-    const tickers = await fetchTickers();
-    const slice = tickers.slice(offset, offset + limit);
-    return {
-      stocks: slice.map((t, i) => ({
-        id: offset + i + 1,
-        symbol: t.ticker,
-        name: t.ticker,
-        closingPrice: t.fechamento,
-      })),
-      total: tickers.length,
-      limit,
-      offset,
-    };
+      return {
+        id: stock.id,
+        symbol: stock.symbol,
+        name: stock.name,
+        currentPrice: parseFloat(stock.current_price),
+        createdAt: stock.created_at,
+        updatedAt: stock.updated_at
+      };
+    } catch (error) {
+      logger.error('Erro ao obter ação pelo ticker:', error);
+      throw error;
+    }
   }
 
-  /** Busca uma ação pelo símbolo (ticker) */
-  static async getBySymbol(symbol: string) {
-    const tickers = await fetchTickers();
-    const ticker = tickers.find(t => t.ticker.toUpperCase() === symbol.toUpperCase());
-    if (!ticker) throw new Error('Stock not found');
-    return {
-      symbol: ticker.ticker,
-      name: ticker.ticker,
-      closingPrice: ticker.fechamento,
-    };
+  static create(data: CreateStockInput) {
+    try {
+      const existingStock = db.prepare('SELECT id FROM stocks WHERE symbol = ?').get(data.symbol);
+      if (existingStock) {
+        throw new Error('Já existe uma ação com esse ticker');
+      }
+
+      const result = db.prepare(`
+        INSERT INTO stocks (symbol, name, current_price)
+        VALUES (?, ?, ?)
+      `).run(data.symbol, data.name, data.currentPrice);
+
+      return {
+        id: result.lastInsertRowid as number,
+        symbol: data.symbol,
+        name: data.name,
+        currentPrice: data.currentPrice
+      };
+    } catch (error) {
+      logger.error('Erro ao criar ação:', error);
+      throw error;
+    }
   }
 
-  /** Busca ações por query no símbolo */
-  static async search(query: string) {
-    const tickers = await fetchTickers();
-    const q = query.toUpperCase();
-    return tickers
-      .filter(t => t.ticker.includes(q))
-      .slice(0, 20)
-      .map(t => ({
-        symbol: t.ticker,
-        name: t.ticker,
-        closingPrice: t.fechamento,
-      }));
+  static updatePrice(stockId: number, data: UpdateStockPriceInput) {
+    try {
+      const stock = db.prepare('SELECT id FROM stocks WHERE id = ?').get(stockId);
+      if (!stock) {
+        throw new Error('Ação não encontrada');
+      }
+
+      db.prepare(`
+        UPDATE stocks SET current_price = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(data.currentPrice, stockId);
+
+      return {
+        id: stockId,
+        currentPrice: data.currentPrice
+      };
+    } catch (error) {
+      logger.error('Erro ao atualizar preço da ação:', error);
+      throw error;
+    }
   }
 
   /** Retorna os preços do pregão para um minuto específico (0–59) */
@@ -85,6 +138,19 @@ export class StockService {
     if (!resp.ok) throw new Error(`Falha ao buscar preços do minuto ${minuto}: ${resp.status}`);
     return (await resp.json()) as PrecoTicker[];
   }
+
+      return stocks.map(s => ({
+        id: s.id,
+        symbol: s.symbol,
+        name: s.name,
+        currentPrice: parseFloat(s.current_price),
+        createdAt: s.created_at,
+        updatedAt: s.updated_at
+      }));
+    } catch (error) {
+      logger.error('Erro ao buscar ações:', error);
+      throw error;
+    }
 
   /** Retorna o preço atual de um ticker em um minuto específico */
   static async getPriceBySymbolAndMinuto(symbol: string, minuto: number) {

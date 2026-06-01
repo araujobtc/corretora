@@ -11,7 +11,7 @@ export class UserService {
       `).get(userId) as any;
 
       if (!user) {
-        throw new Error('User not found');
+        throw new Error('Usuário não encontrado');
       }
 
       return {
@@ -23,7 +23,7 @@ export class UserService {
         updatedAt: user.updated_at
       };
     } catch (error) {
-      logger.error('Get user error:', error);
+      logger.error('Erro ao obter usuário:', error);
       throw error;
     }
   }
@@ -41,18 +41,18 @@ export class UserService {
         db.prepare(`
           INSERT INTO transactions (user_id, type, amount, description)
           VALUES (?, ?, ?, ?)
-        `).run(userId, 'DEPOSIT', data.amount, `Deposit of ${data.amount}`);
+        `).run(userId, 'DEPOSIT', data.amount, `Deposito de ${data.amount}`);
       });
 
       transaction();
 
       const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
       return {
-        message: 'Deposit successful',
+        message: 'Deposito feito com sucesso',
         newBalance: parseFloat(user.balance)
       };
     } catch (error) {
-      logger.error('Deposit error:', error);
+      logger.error('Erro ao fazer deposito:', error);
       throw error;
     }
   }
@@ -63,7 +63,7 @@ export class UserService {
       const currentBalance = parseFloat(user.balance);
 
       if (currentBalance < data.amount) {
-        throw new Error('Insufficient balance');
+        throw new Error('Saldo insuficiente');
       }
 
       const transaction = db.transaction(() => {
@@ -77,18 +77,18 @@ export class UserService {
         db.prepare(`
           INSERT INTO transactions (user_id, type, amount, description)
           VALUES (?, ?, ?, ?)
-        `).run(userId, 'WITHDRAW', data.amount, `Withdrawal of ${data.amount}`);
+        `).run(userId, 'WITHDRAW', data.amount, `Retirada de ${data.amount}`);
       });
 
       transaction();
 
       const updatedUser = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
       return {
-        message: 'Withdrawal successful',
+        message: 'Retirada feita com sucesso',
         newBalance: parseFloat(updatedUser.balance)
       };
     } catch (error) {
-      logger.error('Withdraw error:', error);
+      logger.error('Erro ao fazer retirada:', error);
       throw error;
     }
   }
@@ -120,7 +120,7 @@ export class UserService {
         offset
       };
     } catch (error) {
-      logger.error('Get transactions error:', error);
+      logger.error('Erro ao obter transações:', error);
       throw error;
     }
   }

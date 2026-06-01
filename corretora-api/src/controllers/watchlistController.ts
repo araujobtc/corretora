@@ -12,9 +12,9 @@ export const getWatchlist = async (req: Request, res: Response): Promise<void> =
     const result = WatchlistService.getWatchlist(req.userId);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get watchlist error:', error);
+    logger.error('Erro ao obter lista de cotações :', erro);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to get watchlist'
+      error: erro instanceof Error ? erro.message : 'Falha ao obter lista de cotações'
     });
   }
 };
@@ -29,16 +29,16 @@ export const addToWatchlist = async (req: Request, res: Response): Promise<void>
     const stockId = req.body.stockId;
 
     if (!stockId) {
-      res.status(400).json({ error: 'Stock ID is required' });
+      res.status(400).json({ error: 'Ação não encontrada' });
       return;
     }
 
     const result = WatchlistService.addToWatchlist(req.userId, stockId);
     res.status(201).json(result);
   } catch (error) {
-    logger.error('Add to watchlist error:', error);
+    logger.error('Erro ao adicionar à lista de cotações:', erro);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to add to watchlist'
+      error: erro instanceof Error ? erro.message : 'Falha ao adicionar à lista de cotações'
     });
   }
 };
@@ -53,16 +53,16 @@ export const removeFromWatchlist = async (req: Request, res: Response): Promise<
     const stockId = parseInt(req.params.stockId);
 
     if (isNaN(stockId)) {
-      res.status(400).json({ error: 'Invalid stock ID' });
+      res.status(400).json({ error: 'Ação não encontrada' });
       return;
     }
 
     const result = WatchlistService.removeFromWatchlist(req.userId, stockId);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Remove from watchlist error:', error);
+    logger.error('Erro ao remover da lista de cotações:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to remove from watchlist'
+      error: error instanceof Error ? error.message : 'Falha ao remover da lista de cotações'
     });
   }
 };

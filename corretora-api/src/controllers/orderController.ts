@@ -14,10 +14,10 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
 
     const result = OrderService.getOrders(req.userId, limit, offset);
     res.status(200).json(result);
-  } catch (error) {
-    logger.error('Get orders error:', error);
+  }catch (error) {
+    logger.error('Erro ao obter ordens:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to get orders'
+      error: error instanceof Error ? error.message : 'Falha ao obter ordens'
     });
   }
 };
@@ -32,9 +32,9 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     const result = OrderService.createOrder(req.userId, req.body);
     res.status(201).json(result);
   } catch (error) {
-    logger.error('Create order error:', error);
+    logger.error('Erro ao criar orde:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to create order'
+      error: error instanceof Error ? error.message :'Falha ao criar ordem'
     });
   }
 };
@@ -53,9 +53,9 @@ export const getOrderHistory = async (req: Request, res: Response): Promise<void
     const result = OrderService.getOrderHistory(req.userId, stockId, limit, offset);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get order history error:', error);
+    logger.error('Erro ao obter histórico de ordens:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to get order history'
+      error: error instanceof Error ? error.message : 'Falha ao obter histórico de ordens'
     });
   }
 };
