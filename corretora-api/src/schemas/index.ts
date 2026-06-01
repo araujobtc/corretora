@@ -65,3 +65,11 @@ export type CreateStockInput = z.infer<typeof createStockSchema>;
 export type UpdateStockPriceInput = z.infer<typeof updateStockPriceSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type AddToWatchlistInput = z.infer<typeof addToWatchlistSchema>;
+
+// Reset de senha com token
+export const resetPasswordWithTokenSchema = z.object({
+  token: z.string().min(1, 'Token é obrigatório'),
+  newPassword: z.string().min(6, 'A nova senha deve ter no mínimo 6 caracteres'),
+});
+
+export type ResetPasswordWithTokenInput = z.infer<typeof resetPasswordWithTokenSchema>;

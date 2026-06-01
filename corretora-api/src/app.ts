@@ -1,11 +1,9 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import pinoHttp from 'pino-http';
 import logger from './utils/logger.js';
 import { initializeDatabase } from './config/database.js';
 import { seedDatabase } from './seed.js';
 
-// Routes
 import healthRoutes from './routes/healthRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
@@ -13,30 +11,11 @@ import stockRoutes from './routes/stockRoutes.js';
 import portfolioRoutes from './routes/portfolioRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import watchlistRoutes from './routes/watchlistRoutes.js';
+import relogioRoutes from './routes/relogioRoutes.js';
 
 const app: Express = express();
 
-// Initialize database
 initializeDatabase();
-seedDatabase();
-
-// Middlewares
-app.use(pinoHttp({
-  logger,
-  serializers: {
-    req(req) {
-      return {
-        method: req.method,
-        url: req.url?.split('?')[0],
-      };
-    },
-    res(res) {
-      return {
-        statusCode: res.statusCode,
-      };
-    },
-  },
-}));
 
 app.use(cors({
   origin: true,
@@ -48,7 +27,12 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// Routes
+// Log simples de cada request
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  logger.info(`${req.method} ${req.path}`);
+  next();
+});
+
 app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -56,30 +40,24 @@ app.use('/api/stocks', stockRoutes);
 app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/watchlist', watchlistRoutes);
+app.use('/api/relogio', relogioRoutes);
 
-// 404 handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    error: 'Not Found',
-    message: `Route ${req.method} ${req.path} not found`,
-    timestamp: new Date().toISOString()
-  });
+app.get('/', (_req: Request, res: Response) => {
+  res.json({ message: 'API da Corretora funcionando 🚀' });
 });
 
-// Error handler
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: 'Not Found' });
+});
+
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   logger.error('Unhandled error:', err);
   res.status(500).json({
     error: 'Internal Server Error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
-    timestamp: new Date().toISOString()
   });
 });
 
-app.get('/', (req, res) => {
-  res.json({
-    message: 'API da Corretora funcionando 🚀',
-  });
-});
+seedDatabase().catch((err: Error) => logger.error('Seed falhou:', err));
 
 export default app;
