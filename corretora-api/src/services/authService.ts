@@ -98,7 +98,7 @@ export class AuthService {
 
       if (!user) {
         // Don't reveal if email exists or not for security
-        return { message: 'If the email exists, a password reset link has been sent' };
+        return { message: 'Se o email existe, um link de recuperação de senha foi enviado' };
       }
 
       // In a real application, you would generate a reset token and send it via email
