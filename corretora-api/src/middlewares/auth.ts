@@ -28,7 +28,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     req.user = { id: decoded.userId, email: decoded.email, name: decoded.name };
     next();
   } catch (error) {
-    logger.error('Verificação de token falhou :', erro);
+    logger.error('Verificação de token falhou :', error);
     res.status(403).json({ error: 'Token inválido ou expiradodo' });
   }
 }

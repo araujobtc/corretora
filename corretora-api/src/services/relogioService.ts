@@ -1,5 +1,5 @@
 import db from '../config/database.js';
-import { StockService, PrecoTicker } from './stockService.js';
+import { StockService} from './stockService.js';
 import logger from '../utils/logger.js';
 
 export class RelogioServico {

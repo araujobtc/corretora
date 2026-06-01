@@ -2,56 +2,56 @@ import { z } from 'zod';
 
 // Auth Schemas
 export const registerSchema = z.object({
-  name: z.string().min(3, 'Name must be at least 3 characters'),
-  email: z.string().email('Invalid email'),
-  password: z.string().min(6, 'Password must be at least 6 characters')
+  name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
+  email: z.string().email('Email inválido'),
+  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres')
 });
 
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email'),
-  password: z.string().min(6, 'Password must be at least 6 characters')
+  email: z.string().email('Email inválido'),
+  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres')
 });
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(6),
-  newPassword: z.string().min(6, 'Password must be at least 6 characters')
+  newPassword: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres')
 });
 
 export const resetPasswordSchema = z.object({
-  email: z.string().email('Invalid email')
+  email: z.string().email('Email inválido')
 });
 
 // User Schemas
 export const depositSchema = z.object({
-  amount: z.number().positive('Amount must be positive')
+  amount: z.number().positive('Valor deve ser positivo')
 });
 
 export const withdrawSchema = z.object({
-  amount: z.number().positive('Amount must be positive')
+  amount: z.number().positive('Valor deve ser positivo')
 });
 
 // Stock Schemas
 export const createStockSchema = z.object({
-  symbol: z.string().min(1, 'Symbol is required'),
-  name: z.string().min(1, 'Name is required'),
-  currentPrice: z.number().positive('Price must be positive')
+  symbol: z.string().min(1, 'Ticker é obrigatório'),
+  name: z.string().min(1, 'Nome é obrigatório'),
+  currentPrice: z.number().positive('Preço de ser positivo')
 });
 
 export const updateStockPriceSchema = z.object({
-  currentPrice: z.number().positive('Price must be positive')
+  currentPrice: z.number().positive('Preço deve ser positivo')
 });
 
 // Order Schemas
 export const createOrderSchema = z.object({
-  stockId: z.number().positive('Stock ID is required'),
-  type: z.enum(['BUY', 'SELL'], { errorMap: () => ({ message: 'Type must be BUY or SELL' }) }),
-  quantity: z.number().positive('Quantity must be positive'),
-  price: z.number().positive('Price must be positive')
+  stockId: z.number().positive('Ticker é obrigatório'),
+  type: z.enum(['BUY', 'SELL'], { errorMap: () => ({ message: 'Tipo deve ser BUY ou SELL' }) }),
+  quantity: z.number().positive('Quantidade deve ser positiva'),
+  price: z.number().positive('Preço deve ser positivo')
 });
 
 // Watchlist Schemas
 export const addToWatchlistSchema = z.object({
-  stockId: z.number().positive('Stock ID is required')
+  stockId: z.number().positive('Ticker é obrigatório')
 });
 
 // Types
