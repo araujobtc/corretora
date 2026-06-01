@@ -42,7 +42,6 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     const result = AuthService.resetPassword(req.body.email);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Reset password error:', error);
     logger.error('Erro ao redefinir senha:', error);
     res.status(400).json({ error: error instanceof Error ? error.message : 'Falha ao redefinir senha' });
   }
