@@ -9,7 +9,7 @@ export function validateRequest(schema: ZodSchema) {
       req.body = validated;
       next();
     } catch (error) {
-      logger.error('Validation error:', error);
+      logger.error('Erro ao validar:', error);
       res.status(400).json({
         error: 'Validação falhou',
         details: error instanceof Error ? error.message : 'Erro desconhecido'
