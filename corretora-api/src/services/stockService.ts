@@ -1,17 +1,7 @@
-import db from '../config/database.js';
-import { CreateStockInput, UpdateStockPriceInput } from '../schemas/index.js';
 import logger from '../utils/logger.js';
 
-export class StockService {
-  static getAll(limit: number = 50, offset: number = 0) {
-    try {
-      const stocks = db.prepare(`
-        SELECT id, symbol, name, current_price, created_at, updated_at
-        FROM stocks
-        LIMIT ? OFFSET ?
-      `).all(limit, offset) as any[];
+const PROFESSOR_BASE = 'https://raw.githubusercontent.com/marciobarros/dsw-simulador-corretora/refs/heads/main';
 
-      const countResult = db.prepare('SELECT COUNT(*) as count FROM stocks').get() as any;
 
       return {
         stocks: stocks.map(s => ({
@@ -32,12 +22,16 @@ export class StockService {
     }
   }
 
-  static getById(stockId: number) {
-    try {
-      const stock = db.prepare(`
-        SELECT id, symbol, name, current_price, created_at, updated_at
-        FROM stocks WHERE id = ?
-      `).get(stockId) as any;
+export interface Ticker {
+  ticker: string;
+  fechamento: number;
+}
+
+export interface PrecoTicker {
+  ticker: string;
+  preco: number;
+}
+
 
       if (!stock) {
         throw new Error('Ação não encontrada');
@@ -55,14 +49,22 @@ export class StockService {
       logger.error('Erro ao obter ação:', error);
       throw error;
     }
+
+// Cache simples em memória para não bater na API do professor a cada request
+let tickersCache: Ticker[] | null = null;
+let tickersCacheAt = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+
+async function fetchTickers(): Promise<Ticker[]> {
+  const now = Date.now();
+  if (tickersCache && now - tickersCacheAt < CACHE_TTL_MS) {
+    return tickersCache;
   }
 
-  static getBySymbol(symbol: string) {
-    try {
-      const stock = db.prepare(`
-        SELECT id, symbol, name, current_price, created_at, updated_at
-        FROM stocks WHERE symbol = ?
-      `).get(symbol) as any;
+  const url = `${PROFESSOR_BASE}/tickers.json`;
+  logger.info(`Buscando tickers do professor: ${url}`);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Falha ao buscar tickers: ${resp.status}`);
 
       if (!stock) {
         throw new Error('Ação não encontrada');
@@ -128,14 +130,14 @@ export class StockService {
     }
   }
 
-  static search(query: string) {
-    try {
-      const stocks = db.prepare(`
-        SELECT id, symbol, name, current_price, created_at, updated_at
-        FROM stocks
-        WHERE symbol LIKE ? OR name LIKE ?
-        LIMIT 20
-      `).all(`%${query}%`, `%${query}%`) as any[];
+  /** Retorna os preços do pregão para um minuto específico (0–59) */
+  static async getPricesByMinuto(minuto: number): Promise<PrecoTicker[]> {
+    const url = `${PROFESSOR_BASE}/${minuto}.json`;
+    logger.info(`Buscando preços do minuto ${minuto}: ${url}`);
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Falha ao buscar preços do minuto ${minuto}: ${resp.status}`);
+    return (await resp.json()) as PrecoTicker[];
+  }
 
       return stocks.map(s => ({
         id: s.id,
@@ -149,5 +151,12 @@ export class StockService {
       logger.error('Erro ao buscar ações:', error);
       throw error;
     }
+
+  /** Retorna o preço atual de um ticker em um minuto específico */
+  static async getPriceBySymbolAndMinuto(symbol: string, minuto: number) {
+    const precos = await StockService.getPricesByMinuto(minuto);
+    const entry = precos.find(p => p.ticker.toUpperCase() === symbol.toUpperCase());
+    if (!entry) throw new Error(`Ticker ${symbol} não encontrado no minuto ${minuto}`);
+    return entry;
   }
 }

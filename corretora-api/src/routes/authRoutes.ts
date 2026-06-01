@@ -6,7 +6,8 @@ import {
   registerSchema,
   loginSchema,
   changePasswordSchema,
-  resetPasswordSchema
+  resetPasswordSchema,
+  resetPasswordWithTokenSchema,
 } from '../schemas/index.js';
 
 const router = Router();
@@ -14,6 +15,11 @@ const router = Router();
 router.post('/register', validateRequest(registerSchema), authController.register);
 router.post('/login', validateRequest(loginSchema), authController.login);
 router.post('/change-password', authenticateToken, validateRequest(changePasswordSchema), authController.changePassword);
-router.post('/reset-password', validateRequest(resetPasswordSchema), authController.resetPassword);
+
+// Passo 1: solicita reset (envia e-mail)
+router.post('/forgot-password', validateRequest(resetPasswordSchema), authController.requestPasswordReset);
+
+// Passo 2: confirma reset com token + nova senha
+router.post('/reset-password', validateRequest(resetPasswordWithTokenSchema), authController.resetPassword);
 
 export default router;

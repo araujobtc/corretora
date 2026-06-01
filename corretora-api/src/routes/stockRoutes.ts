@@ -1,15 +1,19 @@
 import { Router } from 'express';
 import * as stockController from '../controllers/stockController.js';
-import { validateRequest } from '../middlewares/validation.js';
-import { createStockSchema, updateStockPriceSchema } from '../schemas/index.js';
 
 const router = Router();
 
-router.get('/', stockController.getStocks);
+// Todas as rotas de ações são pontes para a API do professor
+// GET /api/stocks                         → lista todos os tickers (tickers.json)
+// GET /api/stocks/search?q=PETR          → busca por símbolo
+// GET /api/stocks/symbol/:symbol         → detalhe de um ticker
+// GET /api/stocks/precos/:minuto         → todos os preços de um minuto (0–59)
+// GET /api/stocks/precos/:minuto/:symbol → preço de um ticker em um minuto
+
 router.get('/search', stockController.searchStocks);
-router.get('/:id', stockController.getStock);
+router.get('/precos/:minuto/:symbol', stockController.getPriceBySymbolAndMinuto);
+router.get('/precos/:minuto', stockController.getPricesByMinuto);
 router.get('/symbol/:symbol', stockController.getStockBySymbol);
-router.post('/', validateRequest(createStockSchema), stockController.createStock);
-router.patch('/:id/price', validateRequest(updateStockPriceSchema), stockController.updateStockPrice);
+router.get('/', stockController.getStocks);
 
 export default router;

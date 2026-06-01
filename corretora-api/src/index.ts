@@ -14,12 +14,14 @@ const server = app.listen(PORT, () => {
 ║  URL: http://localhost:${PORT}          ║
 ║                                        ║
 ║  📚 API Endpoints:                     ║
-║  - Health Check: GET /api/health      ║
-║  - Auth: POST /api/auth/register      ║
-║  - Stocks: GET /api/stocks            ║
-║  - Portfolio: GET /api/portfolio      ║
-║  - Orders: GET /api/orders            ║
-║  - Watchlist: GET /api/watchlist      ║
+║  - Health:    GET  /api/health        ║
+║  - Auth:      POST /api/auth/register ║
+║  - Stocks:    GET  /api/stocks        ║
+║  - Preços:    GET  /api/stocks/precos ║
+║  - Portfolio: GET  /api/portfolio     ║
+║  - Orders:    GET  /api/orders        ║
+║  - Watchlist: GET  /api/watchlist     ║
+║  - Relógio:   GET  /api/relogio       ║
 ║                                        ║
 ╚════════════════════════════════════════╝
   `);

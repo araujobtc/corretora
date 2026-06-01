@@ -1,39 +1,40 @@
 import db from './config/database.js';
 import logger from './utils/logger.js';
 
-export function seedDatabase() {
+const TICKERS_URL = 'https://raw.githubusercontent.com/marciobarros/dsw-simulador-corretora/refs/heads/main/tickers.json';
+
+export async function seedDatabase() {
   try {
     const existingStocks = db.prepare('SELECT COUNT(*) as count FROM stocks').get() as any;
 
     if (existingStocks.count === 0) {
-      const stocks = [
-        { symbol: 'PETR4', name: 'Petróleo Brasileiro S.A.', price: 27.45 },
-        { symbol: 'VALE3', name: 'Vale S.A.', price: 58.50 },
-        { symbol: 'BBDC4', name: 'Banco Bradesco S.A.', price: 23.80 },
-        { symbol: 'ITUB4', name: 'Itaú Unibanco S.A.', price: 28.65 },
-        { symbol: 'WEGE3', name: 'Weg S.A.', price: 26.40 },
-        { symbol: 'JBSS3', name: 'JBS S.A.', price: 32.15 },
-        { symbol: 'MGLU3', name: 'Magazine Luiza S.A.', price: 7.80 },
-        { symbol: 'ABEV3', name: 'Ambev S.A.', price: 13.50 },
-        { symbol: 'RENT3', name: 'Localiza Rent a Car', price: 89.90 },
-        { symbol: 'B3SA3', name: 'B3 S.A.', price: 10.50 }
-      ];
+      logger.info('Buscando tickers da API do professor...');
+
+      const response = await fetch(TICKERS_URL);
+      if (!response.ok) {
+        throw new Error(`Falha ao buscar tickers: ${response.status}`);
+      }
+
+      const json: unknown = await response.json();
+      const tickers = json as { ticker: string; fechamento: number }[];
 
       const insertStmt = db.prepare(`
-        INSERT INTO stocks (symbol, name, current_price)
-        VALUES (?, ?, ?)
+        INSERT OR IGNORE INTO stocks (symbol, name, current_price, closing_price)
+        VALUES (?, ?, ?, ?)
       `);
 
-      stocks.forEach(stock => {
-        insertStmt.run(stock.symbol, stock.name, stock.price);
+      const insertMany = db.transaction((items: { ticker: string; fechamento: number }[]) => {
+        for (const t of items) {
+          insertStmt.run(t.ticker, t.ticker, t.fechamento, t.fechamento);
+        }
       });
 
-      logger.info(`✓ Seeded ${stocks.length} stocks`);
+      insertMany(tickers);
+      logger.info(`✓ ${tickers.length} ações carregadas da API do professor`);
     } else {
-      logger.info(`✓ Database already has stocks`);
+      logger.info(`✓ Banco já possui ${existingStocks.count} ações`);
     }
   } catch (error) {
-    logger.error('Seed error:', error);
-    throw error;
+    logger.error('Erro no seed:', error);
   }
 }
