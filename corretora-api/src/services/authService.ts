@@ -20,12 +20,44 @@ export class AuthService {
       `).run(data.name, data.email, passwordHash, 0);
 
       const userId = result.lastInsertRowid as number;
+
+      // BUG #1 CORRIGIDO: popula watchlist com 10 ações aleatórias ao criar conta
+      AuthService.seedWatchlistForNewUser(userId);
+
       const token = generateToken(userId, data.email, data.name);
 
       return { id: userId, name: data.name, email: data.email, balance: 0, token };
     } catch (error) {
       logger.error('Register error:', error);
       throw error;
+    }
+  }
+
+  /** Escolhe 10 ações aleatórias do banco e insere na watchlist do novo usuário */
+  private static seedWatchlistForNewUser(userId: number): void {
+    try {
+      const stocks = db.prepare(`
+        SELECT id FROM stocks ORDER BY RANDOM() LIMIT 10
+      `).all() as { id: number }[];
+
+      if (stocks.length === 0) {
+        logger.warn('Nenhuma ação encontrada no banco para popular a watchlist inicial');
+        return;
+      }
+
+      const insertWatchlist = db.prepare(`
+        INSERT OR IGNORE INTO watchlist (user_id, stock_id) VALUES (?, ?)
+      `);
+
+      const seedTx = db.transaction((items: { id: number }[]) => {
+        for (const s of items) insertWatchlist.run(userId, s.id);
+      });
+
+      seedTx(stocks);
+      logger.info(`Watchlist inicial: ${stocks.length} ações adicionadas para o usuário ${userId}`);
+    } catch (error) {
+      logger.error('Erro ao popular watchlist inicial:', error);
+      // Não relança — cadastro deve ser bem-sucedido mesmo se a watchlist falhar
     }
   }
 
@@ -75,22 +107,18 @@ export class AuthService {
     }
   }
 
-  // Gera token real, salva no banco e envia e-mail
   static async requestPasswordReset(email: string) {
     try {
       const user = db.prepare('SELECT id, name FROM users WHERE email = ?').get(email) as any;
 
-      // Resposta genérica para não revelar se o e-mail existe
       if (!user) {
         return { message: 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.' };
       }
 
-      // Invalida tokens anteriores deste usuário
       db.prepare(`
         UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0
       `).run(user.id);
 
-      // Gera token seguro e expira em 1 hora
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
@@ -99,9 +127,8 @@ export class AuthService {
         VALUES (?, ?, ?)
       `).run(user.id, token, expiresAt);
 
-      // Envia em background — responde imediatamente sem bloquear
       sendPasswordResetEmail(email, user.name, token)
-        .catch(err => logger.error("Falha ao enviar e-mail de reset:", err));
+        .catch(err => logger.error('Falha ao enviar e-mail de reset:', err));
 
       return { message: 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.' };
     } catch (error) {
@@ -110,7 +137,6 @@ export class AuthService {
     }
   }
 
-  // Valida o token e redefine a senha
   static resetPassword(token: string, newPassword: string) {
     try {
       const record = db.prepare(`

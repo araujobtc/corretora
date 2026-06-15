@@ -21,13 +21,15 @@ export const resetPasswordSchema = z.object({
   email: z.string().email('Invalid email')
 });
 
-// User Schemas
+// User Schemas — description agora obrigatória (enunciado exige)
 export const depositSchema = z.object({
-  amount: z.number().positive('Amount must be positive')
+  amount: z.number().positive('Amount must be positive'),
+  description: z.string().min(1, 'Descrição é obrigatória').optional().default('Depósito')
 });
 
 export const withdrawSchema = z.object({
-  amount: z.number().positive('Amount must be positive')
+  amount: z.number().positive('Amount must be positive'),
+  description: z.string().min(1, 'Descrição é obrigatória').optional().default('Retirada')
 });
 
 // Stock Schemas
@@ -41,12 +43,13 @@ export const updateStockPriceSchema = z.object({
   currentPrice: z.number().positive('Price must be positive')
 });
 
-// Order Schemas
+// Order Schemas — limitPrice suporta ordens condicionais (BUG #2 corrigido)
 export const createOrderSchema = z.object({
   stockId: z.number().positive('Stock ID is required'),
   type: z.enum(['BUY', 'SELL'], { errorMap: () => ({ message: 'Type must be BUY or SELL' }) }),
-  quantity: z.number().positive('Quantity must be positive'),
-  price: z.number().positive('Price must be positive')
+  quantity: z.number().int().positive('Quantity must be a positive integer'),
+  price: z.number().positive('Price must be positive'),
+  limitPrice: z.number().positive('Limit price must be positive').optional()
 });
 
 // Watchlist Schemas

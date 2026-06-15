@@ -6,19 +6,18 @@ export class UserService {
   static getMe(userId: number) {
     try {
       const user = db.prepare(`
-        SELECT id, name, email, balance, created_at, updated_at
+        SELECT id, name, email, balance, clock_minute, created_at, updated_at
         FROM users WHERE id = ?
       `).get(userId) as any;
 
-      if (!user) {
-        throw new Error('User not found');
-      }
+      if (!user) throw new Error('User not found');
 
       return {
         id: user.id,
         name: user.name,
         email: user.email,
         balance: parseFloat(user.balance),
+        clockMinute: user.clock_minute ?? 0,
         createdAt: user.created_at,
         updatedAt: user.updated_at
       };
@@ -31,26 +30,25 @@ export class UserService {
   static deposit(userId: number, data: DepositInput) {
     try {
       const transaction = db.transaction(() => {
-        // Update user balance
         db.prepare(`
-          UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
+          UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
         `).run(data.amount, userId);
 
-        // Record transaction
+        // BUG #5 CORRIGIDO: balance_after e description do body
+        const balanceAfter = parseFloat(
+          (db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any).balance
+        );
+
         db.prepare(`
-          INSERT INTO transactions (user_id, type, amount, description)
-          VALUES (?, ?, ?, ?)
-        `).run(userId, 'DEPOSIT', data.amount, `Deposit of ${data.amount}`);
+          INSERT INTO transactions (user_id, type, amount, description, balance_after)
+          VALUES (?, 'DEPOSIT', ?, ?, ?)
+        `).run(userId, data.amount, data.description ?? 'Depósito', balanceAfter);
+
+        return balanceAfter;
       });
 
-      transaction();
-
-      const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
-      return {
-        message: 'Deposit successful',
-        newBalance: parseFloat(user.balance)
-      };
+      const newBalance = transaction();
+      return { message: 'Depósito realizado com sucesso', newBalance };
     } catch (error) {
       logger.error('Deposit error:', error);
       throw error;
@@ -62,31 +60,28 @@ export class UserService {
       const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
       const currentBalance = parseFloat(user.balance);
 
-      if (currentBalance < data.amount) {
-        throw new Error('Insufficient balance');
-      }
+      if (currentBalance < data.amount) throw new Error('Saldo insuficiente');
 
       const transaction = db.transaction(() => {
-        // Update user balance
         db.prepare(`
-          UPDATE users SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
+          UPDATE users SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
         `).run(data.amount, userId);
 
-        // Record transaction
+        // BUG #5 CORRIGIDO: balance_after e description do body
+        const balanceAfter = parseFloat(
+          (db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any).balance
+        );
+
         db.prepare(`
-          INSERT INTO transactions (user_id, type, amount, description)
-          VALUES (?, ?, ?, ?)
-        `).run(userId, 'WITHDRAW', data.amount, `Withdrawal of ${data.amount}`);
+          INSERT INTO transactions (user_id, type, amount, description, balance_after)
+          VALUES (?, 'WITHDRAW', ?, ?, ?)
+        `).run(userId, data.amount, data.description ?? 'Retirada', balanceAfter);
+
+        return balanceAfter;
       });
 
-      transaction();
-
-      const updatedUser = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
-      return {
-        message: 'Withdrawal successful',
-        newBalance: parseFloat(updatedUser.balance)
-      };
+      const newBalance = transaction();
+      return { message: 'Retirada realizada com sucesso', newBalance };
     } catch (error) {
       logger.error('Withdraw error:', error);
       throw error;
@@ -95,17 +90,18 @@ export class UserService {
 
   static getTransactions(userId: number, limit: number = 50, offset: number = 0) {
     try {
+      // BUG #6 CORRIGIDO: inclui balance_after, ordena ASC (cronológico conforme enunciado)
       const transactions = db.prepare(`
-        SELECT id, type, amount, description, created_at
+        SELECT id, type, amount, description, balance_after, created_at
         FROM transactions
         WHERE user_id = ?
-        ORDER BY created_at DESC
+        ORDER BY created_at ASC
         LIMIT ? OFFSET ?
       `).all(userId, limit, offset) as any[];
 
-      const countResult = db.prepare(`
-        SELECT COUNT(*) as count FROM transactions WHERE user_id = ?
-      `).get(userId) as any;
+      const countResult = db.prepare(
+        'SELECT COUNT(*) as count FROM transactions WHERE user_id = ?'
+      ).get(userId) as any;
 
       return {
         transactions: transactions.map(t => ({
@@ -113,6 +109,9 @@ export class UserService {
           type: t.type,
           amount: parseFloat(t.amount),
           description: t.description,
+          balanceAfter: t.balance_after !== null && t.balance_after !== undefined
+            ? parseFloat(t.balance_after)
+            : null,
           createdAt: t.created_at
         })),
         total: countResult.count,
