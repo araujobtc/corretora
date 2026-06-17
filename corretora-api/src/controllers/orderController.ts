@@ -2,10 +2,11 @@ import { Request, Response } from 'express';
 import { OrderService } from '../services/orderService.js';
 import logger from '../utils/logger.js';
 
+// Rota: GET /orders
 export const getOrders = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
       return;
     }
 
@@ -15,34 +16,36 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
     const result = OrderService.getOrders(req.userId, limit, offset);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get orders error:', error);
+    logger.error('Erro ao buscar ordens:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to get orders'
+      error: error instanceof Error ? error.message : 'Ocorreu um erro ao buscar as ordens.'
     });
   }
 };
 
+// Rota: POST /orders
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
       return;
     }
 
     const result = OrderService.createOrder(req.userId, req.body);
     res.status(201).json(result);
   } catch (error) {
-    logger.error('Create order error:', error);
+    logger.error('Erro ao criar ordem:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to create order'
+      error: error instanceof Error ? error.message : 'Ocorreu um erro ao criar a ordem.'
     });
   }
 };
 
+// Rota: GET /orders/history
 export const getOrderHistory = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
       return;
     }
 
@@ -53,9 +56,9 @@ export const getOrderHistory = async (req: Request, res: Response): Promise<void
     const result = OrderService.getOrderHistory(req.userId, stockId, limit, offset);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get order history error:', error);
+    logger.error('Erro ao buscar histórico de ordens:', error);
     res.status(400).json({
-      error: error instanceof Error ? error.message : 'Failed to get order history'
+      error: error instanceof Error ? error.message : 'Ocorreu um erro ao buscar o histórico.'
     });
   }
 };

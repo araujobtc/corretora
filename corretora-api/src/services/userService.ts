@@ -10,7 +10,7 @@ export class UserService {
         FROM users WHERE id = ?
       `).get(userId) as any;
 
-      if (!user) throw new Error('User not found');
+      if (!user) throw new Error('Usuário não encontrado.');
 
       return {
         id: user.id,
@@ -22,7 +22,7 @@ export class UserService {
         updatedAt: user.updated_at
       };
     } catch (error) {
-      logger.error('Get user error:', error);
+      logger.error('Erro ao buscar usuário:', error);
       throw error;
     }
   }
@@ -34,7 +34,6 @@ export class UserService {
           UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
         `).run(data.amount, userId);
 
-        // BUG #5 CORRIGIDO: balance_after e description do body
         const balanceAfter = parseFloat(
           (db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any).balance
         );
@@ -47,10 +46,10 @@ export class UserService {
         return balanceAfter;
       });
 
-      const newBalance = transaction();
-      return { message: 'Depósito realizado com sucesso', newBalance };
+      const novoSaldo = transaction();
+      return { mensagem: 'Depósito realizado com sucesso.', novoSaldo };
     } catch (error) {
-      logger.error('Deposit error:', error);
+      logger.error('Erro ao realizar depósito:', error);
       throw error;
     }
   }
@@ -58,16 +57,15 @@ export class UserService {
   static withdraw(userId: number, data: WithdrawInput) {
     try {
       const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
-      const currentBalance = parseFloat(user.balance);
+      const saldoAtual = parseFloat(user.balance);
 
-      if (currentBalance < data.amount) throw new Error('Saldo insuficiente');
+      if (saldoAtual < data.amount) throw new Error('Saldo insuficiente para realizar esta operação.');
 
       const transaction = db.transaction(() => {
         db.prepare(`
           UPDATE users SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
         `).run(data.amount, userId);
 
-        // BUG #5 CORRIGIDO: balance_after e description do body
         const balanceAfter = parseFloat(
           (db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any).balance
         );
@@ -80,17 +78,17 @@ export class UserService {
         return balanceAfter;
       });
 
-      const newBalance = transaction();
-      return { message: 'Retirada realizada com sucesso', newBalance };
+      const novoSaldo = transaction();
+      return { mensagem: 'Retirada realizada com sucesso.', novoSaldo };
     } catch (error) {
-      logger.error('Withdraw error:', error);
+      logger.error('Erro ao realizar retirada:', error);
       throw error;
     }
   }
 
   static getTransactions(userId: number, limit: number = 50, offset: number = 0) {
     try {
-      // BUG #6 CORRIGIDO: inclui balance_after, ordena ASC (cronológico conforme enunciado)
+      // Req #6: ordena ASC (cronológico conforme enunciado) e inclui balance_after
       const transactions = db.prepare(`
         SELECT id, type, amount, description, balance_after, created_at
         FROM transactions
@@ -119,7 +117,18 @@ export class UserService {
         offset
       };
     } catch (error) {
-      logger.error('Get transactions error:', error);
+      logger.error('Erro ao buscar extrato:', error);
+      throw error;
+    }
+  }
+
+  /** Persiste o minuto do relógio do usuário no banco (Req #2 — horário sobrevive ao logout) */
+  static updateClock(userId: number, minute: number) {
+    try {
+      db.prepare('UPDATE users SET clock_minute = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(minute, userId);
+    } catch (error) {
+      logger.error('Erro ao atualizar relógio:', error);
       throw error;
     }
   }

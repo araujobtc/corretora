@@ -33,17 +33,23 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="t in transacoesComSaldo" :key="t.id">
+            <tr v-for="t in transacoesExibidas" :key="t.id">
               <td class="mono muted" style="font-size:0.78rem;white-space:nowrap">{{ fmtDate(t.createdAt) }}</td>
               <td style="font-size:0.85rem">{{ t.description }}</td>
               <td class="r">
                 <span class="badge" :class="badgeClass(t.type)">{{ labelType(t.type) }}</span>
               </td>
-              <td class="r mono" :class="isCredit(t.type) ? 'gain' : 'loss'">
-                {{ isCredit(t.type) ? '+' : '−' }} R$ {{ fmt(t.amount) }}
+              <td class="r mono" :class="isCredito(t.type) ? 'gain' : 'loss'">
+                {{ isCredito(t.type) ? '+' : '−' }} R$ {{ fmt(t.amount) }}
               </td>
-              <!-- Req #6: saldo após cada lançamento calculado no cliente -->
-              <td class="r mono" style="font-size:0.85rem">R$ {{ fmt(t.balanceAfter) }}</td>
+              <!--
+                Req #6: saldo após cada lançamento.
+                Prioriza o valor retornado pela API (balanceAfter já calculado no backend).
+                Se não vier da API (registros antigos sem a coluna), usa cálculo local como fallback.
+              -->
+              <td class="r mono" style="font-size:0.85rem">
+                R$ {{ fmt(t.balanceAfter ?? t.balanceCalculado) }}
+              </td>
             </tr>
             <tr v-if="transactions.length === 0">
               <td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">
@@ -114,20 +120,36 @@ import { api } from '@/services/api'
 
 const auth = useAuthStore()
 
-interface Tx { id: number; type: string; amount: number; description: string; createdAt: string }
+interface Tx {
+  id: number
+  type: string
+  amount: number
+  description: string
+  createdAt: string
+  balanceAfter: number | null
+}
+
 const transactions = ref<Tx[]>([])
 
-// Req #6: calcula o saldo acumulado após cada lançamento no cliente
-// pois a API não retorna balance_after
-const transacoesComSaldo = computed(() => {
-  let saldo = 0
+/**
+ * Req #6: Exibe saldo após cada lançamento.
+ * Usa `balanceAfter` vindo da API (calculado no backend e gravado no banco).
+ * Para registros antigos que não possuem o campo, aplica cálculo acumulado como fallback.
+ */
+const transacoesExibidas = computed(() => {
+  let saldoAcumulado = 0
   return transactions.value.map(t => {
-    if (isCredit(t.type)) {
-      saldo += t.amount
+    if (isCredito(t.type)) {
+      saldoAcumulado += t.amount
     } else {
-      saldo -= t.amount
+      saldoAcumulado -= t.amount
     }
-    return { ...t, balanceAfter: saldo }
+    return {
+      ...t,
+      // balanceAfter: vem da API (backend calcula e persiste no banco)
+      // balanceCalculado: fallback acumulado caso o campo não exista
+      balanceCalculado: saldoAcumulado
+    }
   })
 })
 
@@ -135,11 +157,11 @@ onMounted(loadAll)
 
 async function loadAll() {
   const [txRes, meRes] = await Promise.all([
-    userService.transactions(100),
+    userService.transactions(500),
     api.get('/users/me')
   ])
-  // Ordem cronológica crescente (Req #6)
-  transactions.value = [...txRes.data.transactions].reverse()
+  // API já retorna em ordem cronológica crescente (ORDER BY created_at ASC)
+  transactions.value = txRes.data.transactions
   auth.setBalance(meRes.data.balance)
 }
 
@@ -158,8 +180,12 @@ function openModal(t: 'DEPOSIT' | 'WITHDRAW') {
 }
 
 async function confirmModal() {
+  // Req #6: rejeita valor zero ou negativo
   if (!modalDesc.value.trim()) { modalError.value = 'Informe uma descrição.'; return }
-  if (!modalAmt.value || modalAmt.value <= 0) { modalError.value = 'Valor deve ser positivo e diferente de zero.'; return }
+  if (!modalAmt.value || modalAmt.value <= 0) {
+    modalError.value = 'O valor deve ser positivo e diferente de zero.'
+    return
+  }
   modalLoading.value = true
   modalError.value = ''
   try {
@@ -171,7 +197,7 @@ async function confirmModal() {
     modalType.value = null
     await loadAll()
   } catch (e: any) {
-    modalError.value = e.response?.data?.error ?? 'Erro ao processar'
+    modalError.value = e.response?.data?.error ?? 'Erro ao processar operação.'
   } finally {
     modalLoading.value = false
   }
@@ -186,6 +212,10 @@ const pwdMsg = ref<{ ok: boolean; text: string } | null>(null)
 
 async function submitPwd() {
   pwdMsg.value = null
+  if (!currentPwd.value || !newPwd.value) {
+    pwdMsg.value = { ok: false, text: 'Preencha os dois campos de senha.' }
+    return
+  }
   pwdLoading.value = true
   try {
     await authService.changePassword({ currentPassword: currentPwd.value, newPassword: newPwd.value })
@@ -193,23 +223,23 @@ async function submitPwd() {
     currentPwd.value = ''
     newPwd.value = ''
   } catch (e: any) {
-    pwdMsg.value = { ok: false, text: e.response?.data?.error ?? 'Erro ao alterar senha' }
+    pwdMsg.value = { ok: false, text: e.response?.data?.error ?? 'Erro ao alterar senha.' }
   } finally {
     pwdLoading.value = false
   }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-// Req #6: exibe data/hora real do lançamento
 function fmtDate(dt: string) {
   return new Date(dt).toLocaleString('pt-BR')
 }
 
-const isCredit = (t: string) => t === 'DEPOSIT' || t === 'SELL'
-const labelType = (t: string) => ({ DEPOSIT: 'Depósito', WITHDRAW: 'Retirada', BUY: 'Compra', SELL: 'Venda' }[t] ?? t)
-const badgeClass = (t: string) => isCredit(t) ? 'badge-gain' : 'badge-loss'
+const isCredito = (t: string) => t === 'DEPOSIT' || t === 'SELL'
+const labelType = (t: string) =>
+  ({ DEPOSIT: 'Depósito', WITHDRAW: 'Retirada', BUY: 'Compra', SELL: 'Venda' }[t] ?? t)
+const badgeClass = (t: string) => isCredito(t) ? 'badge-gain' : 'badge-loss'
 </script>
 
 <style scoped>
@@ -221,5 +251,5 @@ const badgeClass = (t: string) => isCredit(t) ? 'badge-gain' : 'badge-loss'
 .section-title { font-family: var(--font-display); font-weight: 700; margin-bottom: 1rem; }
 .pwd-form { margin-top: 1rem; max-width: 380px; }
 .mono { font-family: var(--font-mono); }
-.success-msg { background: var(--gain-dim); border: 1px solid var(--gain); color: var(--gain); border-radius: var(--radius-sm); padding: 0.6rem 0.9rem; font-size: 0.82rem; }
+.success-msg { background: var(--gain-dim); border: 1px solid var(--gain); color: var(--gain); border-radius: var(--radius-sm); padding: 0.6rem 0.9rem; font-size: 0.82rem; margin-bottom: 1rem; }
 </style>

@@ -59,6 +59,10 @@
               <td class="r mono" :class="varClass(liveVar(pos).pct)">
                 {{ sign(liveVar(pos).pct) }}{{ fmtPct(Math.abs(liveVar(pos).pct)) }}%
               </td>
+              <!--
+                Req #4: ganho/perda = quantidade × (preço atual − preço de compra)
+                liveGain(pos) = (preçoAtual - preçoMédio) × quantidade
+              -->
               <td class="r mono" :class="varClass(liveGain(pos))">
                 {{ sign(liveGain(pos)) }}R$ {{ fmt(Math.abs(liveGain(pos))) }}
               </td>
@@ -95,7 +99,7 @@
         <label>Tipo de ordem</label>
         <div class="radio-group">
           <label class="radio-opt"><input type="radio" v-model="sellType" value="market" /> A valor de mercado</label>
-          <label class="radio-opt"><input type="radio" v-model="sellType" value="limit" /> A partir de</label>
+          <label class="radio-opt"><input type="radio" v-model="sellType" value="limit" /> A partir de determinado preço</label>
         </div>
       </div>
 
@@ -105,7 +109,10 @@
         <span class="field-hint">
           A venda será executada quando o preço atingir ou ultrapassar R$ {{ fmt(sellLimit) }}.
           <template v-if="livePrice(sellPos) >= sellLimit">
-            <strong class="gain"> O preço atual já satisfaz a condição — será executada agora.</strong>
+            <strong class="gain"> O preço atual já satisfaz a condição — a ordem será executada imediatamente.</strong>
+          </template>
+          <template v-else>
+            <span class="muted"> A ordem ficará pendente e será executada automaticamente quando o preço atingir o mínimo.</span>
           </template>
         </span>
       </div>
@@ -151,11 +158,15 @@ interface Pos {
 const positions = ref<Pos[]>([])
 const flashClass = ref<Record<string, string>>({})
 
+/**
+ * Req #4: ganhos e perdas = quantidade × (preço atual − preço de compra).
+ * Usa preços em tempo real do clock store.
+ */
 const summary = computed(() => {
   const invested = positions.value.reduce((s, p) => s + p.averagePrice * p.quantity, 0)
-  const current = positions.value.reduce((s, p) => s + livePrice(p) * p.quantity, 0)
+  const current  = positions.value.reduce((s, p) => s + livePrice(p) * p.quantity, 0)
   const gain = current - invested
-  const pct = invested > 0 ? (gain / invested) * 100 : 0
+  const pct  = invested > 0 ? (gain / invested) * 100 : 0
   return { totalInvested: invested, totalCurrent: current, totalGainLoss: gain, totalGainLossPercent: pct }
 })
 
@@ -169,9 +180,12 @@ async function loadPortfolio() {
   positions.value = res.data.positions
 }
 
+/** Preço atual: usa clock store (atualizado em tempo real) com fallback ao valor do banco */
 function livePrice(pos: Pos) {
   return clock.prices[pos.symbol] ?? pos.currentPrice
 }
+
+/** Variação em relação ao fechamento do dia anterior */
 function liveVar(pos: Pos) {
   const p = livePrice(pos)
   const c = clock.closingPrice(pos.symbol)
@@ -179,6 +193,8 @@ function liveVar(pos: Pos) {
   const pct = c > 0 ? (nom / c) * 100 : 0
   return { nom, pct }
 }
+
+/** Req #4: ganho/perda = quantidade × (preço atual − preço médio de compra) */
 function liveGain(pos: Pos) {
   return (livePrice(pos) - pos.averagePrice) * pos.quantity
 }
@@ -189,6 +205,7 @@ async function onAdvance(mins: number) {
 
   const novos = await clock.advance(mins)
 
+  // Pisca as células que tiveram variação (Req #2 — aplicado também na carteira)
   for (const p of positions.value) {
     const pv = prev[p.symbol]
     const nv = novos[p.symbol]
@@ -220,7 +237,7 @@ async function confirmSell() {
 
   // Req #5: não aceita zero ou negativo
   if (!sellQty.value || sellQty.value <= 0) {
-    sellError.value = 'Quantidade deve ser maior que zero.'
+    sellError.value = 'A quantidade informada deve ser maior que zero.'
     return
   }
   if (sellQty.value > sellPos.value.quantity) {
@@ -229,45 +246,58 @@ async function confirmSell() {
   }
 
   const precoAtual = livePrice(sellPos.value)
-  let priceToUse: number
 
   if (sellType.value === 'limit') {
     if (!sellLimit.value || sellLimit.value <= 0) {
-      sellError.value = 'Informe um preço mínimo válido.'
+      sellError.value = 'Informe um preço mínimo válido (maior que zero).'
       return
     }
-    // Req #5: executa imediatamente se o preço atual já está acima do limite
-    if (precoAtual >= sellLimit.value) {
-      priceToUse = precoAtual
-    } else {
-      sellError.value = `O preço atual (R$ ${fmt(precoAtual)}) está abaixo do seu mínimo (R$ ${fmt(sellLimit.value)}). Aguarde o relógio avançar até o preço atingir seu mínimo.`
-      return
+
+    sellLoading.value = true
+    try {
+      // Req #5: envia limitPrice à API.
+      // Se precoAtual >= sellLimit → API executa imediatamente.
+      // Se precoAtual <  sellLimit → API registra como PENDING e executa quando o preço subir.
+      await orderService.create({
+        stockId: sellPos.value.stockId,
+        type: 'SELL',
+        quantity: sellQty.value,
+        price: precoAtual,
+        limitPrice: sellLimit.value,
+      })
+      const me = await api.get('/users/me')
+      auth.setBalance(me.data.balance)
+      sellPos.value = null
+      await loadPortfolio()
+    } catch (e: any) {
+      sellError.value = e.response?.data?.error ?? 'Erro ao criar ordem de venda.'
+    } finally {
+      sellLoading.value = false
     }
   } else {
-    priceToUse = precoAtual
-  }
-
-  sellLoading.value = true
-  try {
-    await orderService.create({
-      stockId: sellPos.value.stockId,
-      type: 'SELL',
-      quantity: sellQty.value,
-      price: priceToUse,
-    })
-    const me = await api.get('/users/me')
-    auth.setBalance(me.data.balance)
-    sellPos.value = null
-    await loadPortfolio()
-  } catch (e: any) {
-    sellError.value = e.response?.data?.error ?? 'Erro ao criar ordem'
-  } finally {
-    sellLoading.value = false
+    // Venda a valor de mercado: executa imediatamente pelo preço atual
+    sellLoading.value = true
+    try {
+      await orderService.create({
+        stockId: sellPos.value.stockId,
+        type: 'SELL',
+        quantity: sellQty.value,
+        price: precoAtual,
+      })
+      const me = await api.get('/users/me')
+      auth.setBalance(me.data.balance)
+      sellPos.value = null
+      await loadPortfolio()
+    } catch (e: any) {
+      sellError.value = e.response?.data?.error ?? 'Erro ao criar ordem de venda.'
+    } finally {
+      sellLoading.value = false
+    }
   }
 }
 
-const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmtPct = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtPct = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const sign = (v: number) => v >= 0 ? '+' : '−'
 const varClass = (v: number) => v > 0 ? 'gain' : v < 0 ? 'loss' : 'muted'
 </script>

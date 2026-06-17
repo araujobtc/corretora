@@ -4,15 +4,17 @@ import { stockService } from '@/services/stockService'
 import { api } from '@/services/api'
 
 export const useClockStore = defineStore('clock', () => {
-  // Minuto atual do relógio (0–59). 0 = 14:00
-  // Lido do localStorage como cache local; fonte de verdade é o backend
+  // Minuto atual do relógio (0–59). 0 = 14:00.
+  // Fonte de verdade: backend (campo clock_minute na tabela users).
+  // localStorage é usado como cache local para leitura imediata.
   const minute = ref<number>(parseInt(localStorage.getItem('clockMinute') || '0'))
   const advancing = ref(false)
 
-  const prices = ref<Record<string, number>>({})
+  const prices  = ref<Record<string, number>>({})
   const closing = ref<Record<string, number>>({})
   const stockIds = ref<Record<string, number>>({})
 
+  // Req #2: relógio começa às 14:00 (minuto 0)
   const timeLabel = computed(() => {
     const total = 14 * 60 + minute.value
     const h = Math.floor(total / 60)
@@ -20,89 +22,89 @@ export const useClockStore = defineStore('clock', () => {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
   })
 
-  // Rótulo do horário simulado para gravar em transações (ex: "14:03")
-  function clockTimeLabel(min?: number) {
-    const m = min ?? minute.value
-    const total = 14 * 60 + m
-    const h = Math.floor(total / 60)
-    const mm = total % 60
-    return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
-  }
-
   async function init() {
-    // 1. Busca minuto salvo no backend (persistência real por usuário - Req #2)
+    // 1. Busca o minuto salvo no backend (persistência real por usuário - Req #2)
     try {
       const meRes = await api.get('/users/me')
-      // Se a API tiver clockMinute, usa ele; senão usa o localStorage
-      if (meRes.data.clockMinute !== undefined) {
+      if (typeof meRes.data.clockMinute === 'number') {
         minute.value = meRes.data.clockMinute
         localStorage.setItem('clockMinute', String(minute.value))
       }
     } catch {
-      // fallback para localStorage
+      // fallback para localStorage se a API estiver indisponível
     }
 
-    // 2. Carrega stocks do banco
+    // 2. Carrega ações do banco (IDs e símbolos)
     const res = await stockService.all(200)
     const stocks: any[] = res.data.stocks
     for (const s of stocks) {
       stockIds.value[s.symbol] = s.id
-      prices.value[s.symbol] = s.currentPrice
-      closing.value[s.symbol] = s.closingPrice ?? s.currentPrice
+      // Usa closingPrice como fallback de preço até o primeiro avanço
+      prices.value[s.symbol]  = s.currentPrice ?? s.closingPrice ?? 0
+      closing.value[s.symbol] = s.closingPrice ?? s.currentPrice ?? 0
     }
 
-    // 3. Busca fechamentos reais da API do professor
+    // 3. Busca fechamentos reais da API do professor (mais precisos que o banco)
     try {
       const tickers = await stockService.fetchTickers()
       for (const t of tickers) {
         closing.value[t.ticker] = t.fechamento
+        // Se ainda não há preço atual, usa o fechamento como valor inicial
+        if (!prices.value[t.ticker]) prices.value[t.ticker] = t.fechamento
       }
     } catch {
-      // continua com fallback
+      // continua com os fechamentos do banco
     }
 
-    // 4. Busca preços do minuto atual para garantir dados frescos
+    // 4. Busca preços do minuto atual para dados frescos
     try {
       const precos = await stockService.fetchMinute(minute.value)
       for (const p of precos) {
         prices.value[p.ticker] = p.preco
       }
     } catch {
-      // continua com preços do banco
+      // continua com os preços já carregados
     }
   }
 
+  /**
+   * Avança o relógio em N minutos, consulta a API do professor e processa
+   * ordens pendentes no backend.
+   * Req #2: horário persistido no banco — sobrevive ao logout/login.
+   */
   async function advance(mins: number): Promise<Record<string, number>> {
     if (advancing.value) return {}
     advancing.value = true
     try {
       const novoMinuto = (minute.value + mins) % 60
+
+      // Busca preços do próximo minuto diretamente na API do professor
       const precosProfessor = await stockService.fetchMinute(novoMinuto)
+      const novosPrecos: Record<string, number> = {}
+      for (const p of precosProfessor) novosPrecos[p.ticker] = p.preco
 
-      const novoPrecos: Record<string, number> = {}
-      for (const p of precosProfessor) novoPrecos[p.ticker] = p.preco
-
-      // Atualiza banco via PATCH individual
-      await Promise.allSettled(
-        precosProfessor
-          .filter((p) => stockIds.value[p.ticker])
-          .map((p) => stockService.updatePrice(stockIds.value[p.ticker], p.preco))
-      )
-
-      // Persiste o minuto no backend (Req #2 — persistência ao sair e voltar)
+      // Persiste o minuto no backend:
+      // - a API /relogio/avancar já processa ordens pendentes e persiste o minuto
+      // - fallback: POST /users/me/clock persiste apenas o minuto
       try {
-        await api.post('/users/me/clock', { minute: novoMinuto })
+        await api.post('/relogio/avancar', { minutos: mins })
       } catch {
-        // API pode não ter esse endpoint; fallback para localStorage apenas
+        // fallback: persiste só o minuto caso /relogio/avancar falhe
+        try {
+          await api.post('/users/me/clock', { minute: novoMinuto })
+        } catch {
+          // último fallback: apenas localStorage
+        }
       }
 
-      for (const [sym, preco] of Object.entries(novoPrecos)) {
+      // Atualiza o estado local com os novos preços
+      for (const [sym, preco] of Object.entries(novosPrecos)) {
         prices.value[sym] = preco
       }
       minute.value = novoMinuto
       localStorage.setItem('clockMinute', String(novoMinuto))
 
-      return novoPrecos
+      return novosPrecos
     } finally {
       advancing.value = false
     }
@@ -126,6 +128,6 @@ export const useClockStore = defineStore('clock', () => {
 
   return {
     minute, advancing, timeLabel, prices, closing, stockIds,
-    init, advance, currentPrice, closingPrice, variation, clockTimeLabel
+    init, advance, currentPrice, closingPrice, variation
   }
 })

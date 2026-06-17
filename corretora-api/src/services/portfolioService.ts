@@ -78,7 +78,7 @@ export class PortfolioService {
       `).get(userId, stockId) as any;
 
       if (!position || position.quantity === 0) {
-        throw new Error('Position not found');
+        throw new Error('Posição não encontrada na carteira.');
       }
 
       return {

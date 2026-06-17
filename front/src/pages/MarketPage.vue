@@ -51,14 +51,14 @@
       </div>
     </div>
 
-    <!-- Modal: adicionar ação -->
+    <!-- Modal: adicionar ação (Req #2) -->
     <Modal v-if="showAdd" title="Adicionar ação" @close="showAdd=false">
       <div class="field">
         <label>Ticker disponível</label>
         <select class="input" v-model="addStockId">
           <option value="">Selecione…</option>
           <option v-for="s in availableStocks" :key="s.id" :value="s.id">
-            {{ s.symbol }} — R$ {{ fmt(s.currentPrice) }}
+            {{ s.symbol }} — R$ {{ fmt(s.closingPrice ?? s.currentPrice ?? 0) }}
           </option>
         </select>
       </div>
@@ -87,7 +87,7 @@
         <label>Tipo de ordem</label>
         <div class="radio-group">
           <label class="radio-opt"><input type="radio" v-model="buyType" value="market" /> A valor de mercado</label>
-          <label class="radio-opt"><input type="radio" v-model="buyType" value="limit" /> Abaixo de</label>
+          <label class="radio-opt"><input type="radio" v-model="buyType" value="limit" /> Abaixo de determinado preço</label>
         </div>
       </div>
 
@@ -97,7 +97,10 @@
         <span class="field-hint">
           A compra será executada quando o preço atingir ou ficar abaixo de R$ {{ fmt(buyLimit) }}.
           <template v-if="clock.currentPrice(buyItem.symbol) <= buyLimit">
-            <strong class="gain"> O preço atual já satisfaz a condição — será executada agora.</strong>
+            <strong class="gain"> O preço atual já satisfaz a condição — a ordem será executada imediatamente.</strong>
+          </template>
+          <template v-else>
+            <span class="muted"> A ordem ficará pendente e será executada automaticamente quando o preço atingir o limite.</span>
           </template>
         </span>
       </div>
@@ -106,7 +109,7 @@
 
       <div class="cost-preview" v-if="buyQty > 0">
         <span class="muted">Total estimado</span>
-        <span class="mono">R$ {{ fmt(buyQty * (buyType === 'limit' ? Math.min(buyLimit, clock.currentPrice(buyItem.symbol)) : clock.currentPrice(buyItem.symbol))) }}</span>
+        <span class="mono">R$ {{ fmt(buyQty * (buyType === 'limit' ? buyLimit : clock.currentPrice(buyItem.symbol))) }}</span>
       </div>
 
       <div style="display:flex;gap:0.75rem;margin-top:1rem">
@@ -142,16 +145,6 @@ onMounted(async () => {
   await clock.init()
   const res = await watchlistService.get()
   watchlist.value = res.data.map((w: any) => ({ stockId: w.stockId, symbol: w.symbol }))
-
-  // Novo usuário: 10 ações aleatórias (Req #2)
-  if (watchlist.value.length === 0) {
-    const all = (await stockService.all(200)).data.stocks
-    const escolhidas = [...all].sort(() => Math.random() - 0.5).slice(0, 10)
-    for (const s of escolhidas) {
-      await watchlistService.add(s.id).catch(() => {})
-      watchlist.value.push({ stockId: s.id, symbol: s.symbol })
-    }
-  }
 })
 
 // ── Avançar relógio (Req #2) ──────────────────────────────────────────────────
@@ -161,6 +154,7 @@ async function onAdvance(mins: number) {
 
   const novos = await clock.advance(mins)
 
+  // Req #2: células alteradas piscam para chamar atenção do usuário
   for (const w of watchlist.value) {
     const prev = prevPrecos[w.symbol]
     const novo = novos[w.symbol]
@@ -177,6 +171,7 @@ const addLoading = ref(false)
 const addError = ref('')
 const allStocks = ref<any[]>([])
 
+// Filtra ações que já estão na watchlist do usuário
 const availableStocks = computed(() => {
   const ids = new Set(watchlist.value.map(w => w.stockId))
   return allStocks.value.filter(s => !ids.has(s.id))
@@ -201,7 +196,7 @@ async function confirmAdd() {
     watchlist.value.push({ stockId: s.id, symbol: s.symbol })
     showAdd.value = false
   } catch (e: any) {
-    addError.value = e.response?.data?.error ?? 'Erro ao adicionar'
+    addError.value = e.response?.data?.error ?? 'Erro ao adicionar ação.'
   } finally {
     addLoading.value = false
   }
@@ -235,51 +230,61 @@ async function confirmBuy() {
 
   // Req #3: não aceita zero ou negativo
   if (!buyQty.value || buyQty.value <= 0) {
-    buyError.value = 'Quantidade deve ser maior que zero.'
+    buyError.value = 'A quantidade informada deve ser maior que zero.'
     return
   }
 
   const precoAtual = clock.currentPrice(buyItem.value.symbol)
 
-  let priceToUse: number
-
   if (buyType.value === 'limit') {
     if (!buyLimit.value || buyLimit.value <= 0) {
-      buyError.value = 'Informe um preço limite válido.'
+      buyError.value = 'Informe um preço limite válido (maior que zero).'
       return
     }
-    // Req #3: executa imediatamente se o preço atual já está abaixo do limite
-    // A API não suporta ordens pendentes, então executamos ao preço atual
-    if (precoAtual <= buyLimit.value) {
-      priceToUse = precoAtual
-    } else {
-      buyError.value = `O preço atual (R$ ${fmt(precoAtual)}) está acima do seu limite (R$ ${fmt(buyLimit.value)}). Aguarde o relógio avançar até o preço atingir seu limite.`
-      return
+
+    buyLoading.value = true
+    try {
+      // Req #3: envia limitPrice à API independentemente do preço atual.
+      // Se precoAtual <= buyLimit → API executa imediatamente (a mercado).
+      // Se precoAtual > buyLimit  → API registra como PENDING e executa quando o preço baixar.
+      await orderService.create({
+        stockId: buyItem.value.stockId,
+        type: 'BUY',
+        quantity: buyQty.value,
+        price: precoAtual,
+        limitPrice: buyLimit.value,
+      })
+      const me = await api.get('/users/me')
+      auth.setBalance(me.data.balance)
+      buyItem.value = null
+    } catch (e: any) {
+      buyError.value = e.response?.data?.error ?? 'Erro ao criar ordem de compra.'
+    } finally {
+      buyLoading.value = false
     }
   } else {
-    priceToUse = precoAtual
-  }
-
-  buyLoading.value = true
-  try {
-    await orderService.create({
-      stockId: buyItem.value.stockId,
-      type: 'BUY',
-      quantity: buyQty.value,
-      price: priceToUse,
-    })
-    const me = await api.get('/users/me')
-    auth.setBalance(me.data.balance)
-    buyItem.value = null
-  } catch (e: any) {
-    buyError.value = e.response?.data?.error ?? 'Erro ao criar ordem'
-  } finally {
-    buyLoading.value = false
+    // Compra a valor de mercado: executa imediatamente pelo preço atual
+    buyLoading.value = true
+    try {
+      await orderService.create({
+        stockId: buyItem.value.stockId,
+        type: 'BUY',
+        quantity: buyQty.value,
+        price: precoAtual,
+      })
+      const me = await api.get('/users/me')
+      auth.setBalance(me.data.balance)
+      buyItem.value = null
+    } catch (e: any) {
+      buyError.value = e.response?.data?.error ?? 'Erro ao criar ordem de compra.'
+    } finally {
+      buyLoading.value = false
+    }
   }
 }
 
-const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmtPct = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmt = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fmtPct = (v: number) => (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const sign = (v: number) => v >= 0 ? '+' : '−'
 const varClass = (v: number) => v > 0 ? 'gain' : v < 0 ? 'loss' : 'muted'
 </script>

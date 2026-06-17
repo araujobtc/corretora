@@ -5,30 +5,36 @@ import logger from '../utils/logger.js';
 /** GET /api/relogio → estado atual do relógio + preços da watchlist via API do professor */
 export const getEstado = async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (!req.userId) {
+      res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
+      return;
+    }
     const result = await RelogioServico.getEstado(req.userId);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Get estado relógio error:', error);
-    res.status(502).json({ error: error instanceof Error ? error.message : 'Falha ao consultar API do professor' });
+    logger.error('Erro ao consultar relógio:', error);
+    res.status(502).json({ error: error instanceof Error ? error.message : 'Falha ao consultar a API de preços.' });
   }
 };
 
 /** POST /api/relogio/avancar → avança o relógio e busca preços na API do professor */
 export const avancar = async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (!req.userId) {
+      res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
+      return;
+    }
 
     const minutos = parseInt(req.body.minutos);
     if (isNaN(minutos) || minutos < 1) {
-      res.status(400).json({ error: '"minutos" deve ser um inteiro positivo' });
+      res.status(400).json({ error: 'O campo "minutos" deve ser um número inteiro positivo.' });
       return;
     }
 
     const result = await RelogioServico.avancar(req.userId, minutos);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Avancar relógio error:', error);
-    res.status(502).json({ error: error instanceof Error ? error.message : 'Falha ao consultar API do professor' });
+    logger.error('Erro ao avançar relógio:', error);
+    res.status(502).json({ error: error instanceof Error ? error.message : 'Falha ao consultar a API de preços.' });
   }
 };
