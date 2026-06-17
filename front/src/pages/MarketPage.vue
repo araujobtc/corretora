@@ -51,7 +51,7 @@
       </div>
     </div>
 
-    <!-- Modal: adicionar ação (Req #2) -->
+    <!-- Modal: adicionar ação -->
     <Modal v-if="showAdd" title="Adicionar ação" @close="showAdd=false">
       <div class="field">
         <label>Ticker disponível</label>
@@ -94,13 +94,19 @@
       <div class="field" v-if="buyType === 'limit'">
         <label>Preço limite (R$)</label>
         <input class="input" type="number" step="0.01" min="0.01" v-model.number="buyLimit" />
+        <span class="field-hint">
+          A compra será executada quando o preço atingir ou ficar abaixo de R$ {{ fmt(buyLimit) }}.
+          <template v-if="clock.currentPrice(buyItem.symbol) <= buyLimit">
+            <strong class="gain"> O preço atual já satisfaz a condição — será executada agora.</strong>
+          </template>
+        </span>
       </div>
 
       <div v-if="buyError" class="error-msg">{{ buyError }}</div>
 
       <div class="cost-preview" v-if="buyQty > 0">
         <span class="muted">Total estimado</span>
-        <span class="mono">R$ {{ fmt(buyQty * clock.currentPrice(buyItem.symbol)) }}</span>
+        <span class="mono">R$ {{ fmt(buyQty * (buyType === 'limit' ? Math.min(buyLimit, clock.currentPrice(buyItem.symbol)) : clock.currentPrice(buyItem.symbol))) }}</span>
       </div>
 
       <div style="display:flex;gap:0.75rem;margin-top:1rem">
@@ -123,15 +129,13 @@ import { useAuthStore } from '@/stores/auth'
 import { watchlistService } from '@/services/watchlistService'
 import { orderService } from '@/services/orderService'
 import { stockService } from '@/services/stockService'
+import { api } from '@/services/api'
 
 const clock = useClockStore()
 const auth = useAuthStore()
 
-// ── Watchlist state ──────────────────────────────────────────────────────────
 interface WItem { stockId: number; symbol: string }
 const watchlist = ref<WItem[]>([])
-
-// ── Flash animation tracking ─────────────────────────────────────────────────
 const flashClass = ref<Record<string, string>>({})
 
 onMounted(async () => {
@@ -139,7 +143,7 @@ onMounted(async () => {
   const res = await watchlistService.get()
   watchlist.value = res.data.map((w: any) => ({ stockId: w.stockId, symbol: w.symbol }))
 
-  // Novo usuário: escolhe 10 aleatórias
+  // Novo usuário: 10 ações aleatórias (Req #2)
   if (watchlist.value.length === 0) {
     const all = (await stockService.all(200)).data.stocks
     const escolhidas = [...all].sort(() => Math.random() - 0.5).slice(0, 10)
@@ -150,14 +154,13 @@ onMounted(async () => {
   }
 })
 
-// ── Avançar relógio ──────────────────────────────────────────────────────────
+// ── Avançar relógio (Req #2) ──────────────────────────────────────────────────
 async function onAdvance(mins: number) {
   const prevPrecos: Record<string, number> = {}
   for (const w of watchlist.value) prevPrecos[w.symbol] = clock.currentPrice(w.symbol)
 
   const novos = await clock.advance(mins)
 
-  // Pisca células que mudaram de valor
   for (const w of watchlist.value) {
     const prev = prevPrecos[w.symbol]
     const novo = novos[w.symbol]
@@ -167,7 +170,7 @@ async function onAdvance(mins: number) {
   }
 }
 
-// ── Adicionar ação ───────────────────────────────────────────────────────────
+// ── Adicionar ação (Req #2) ───────────────────────────────────────────────────
 const showAdd = ref(false)
 const addStockId = ref<number | ''>('')
 const addLoading = ref(false)
@@ -204,13 +207,13 @@ async function confirmAdd() {
   }
 }
 
-// ── Remover ação ─────────────────────────────────────────────────────────────
+// ── Remover ação (Req #2) ─────────────────────────────────────────────────────
 async function removeItem(item: WItem) {
   await watchlistService.remove(item.stockId)
   watchlist.value = watchlist.value.filter(w => w.stockId !== item.stockId)
 }
 
-// ── Compra (Req #3) ──────────────────────────────────────────────────────────
+// ── Compra (Req #3) ───────────────────────────────────────────────────────────
 const buyItem = ref<WItem | null>(null)
 const buyQty = ref(1)
 const buyType = ref<'market' | 'limit'>('market')
@@ -229,10 +232,33 @@ function openBuy(item: WItem) {
 async function confirmBuy() {
   if (!buyItem.value) return
   buyError.value = ''
-  if (!buyQty.value || buyQty.value <= 0) { buyError.value = 'Quantidade inválida.'; return }
 
-  const price = buyType.value === 'limit' ? buyLimit.value : clock.currentPrice(buyItem.value.symbol)
-  if (price <= 0) { buyError.value = 'Preço inválido.'; return }
+  // Req #3: não aceita zero ou negativo
+  if (!buyQty.value || buyQty.value <= 0) {
+    buyError.value = 'Quantidade deve ser maior que zero.'
+    return
+  }
+
+  const precoAtual = clock.currentPrice(buyItem.value.symbol)
+
+  let priceToUse: number
+
+  if (buyType.value === 'limit') {
+    if (!buyLimit.value || buyLimit.value <= 0) {
+      buyError.value = 'Informe um preço limite válido.'
+      return
+    }
+    // Req #3: executa imediatamente se o preço atual já está abaixo do limite
+    // A API não suporta ordens pendentes, então executamos ao preço atual
+    if (precoAtual <= buyLimit.value) {
+      priceToUse = precoAtual
+    } else {
+      buyError.value = `O preço atual (R$ ${fmt(precoAtual)}) está acima do seu limite (R$ ${fmt(buyLimit.value)}). Aguarde o relógio avançar até o preço atingir seu limite.`
+      return
+    }
+  } else {
+    priceToUse = precoAtual
+  }
 
   buyLoading.value = true
   try {
@@ -240,10 +266,9 @@ async function confirmBuy() {
       stockId: buyItem.value.stockId,
       type: 'BUY',
       quantity: buyQty.value,
-      price,
+      price: priceToUse,
     })
-    // Atualiza saldo
-    const me = await import('@/services/api').then(m => m.api.get('/users/me'))
+    const me = await api.get('/users/me')
     auth.setBalance(me.data.balance)
     buyItem.value = null
   } catch (e: any) {
@@ -253,7 +278,6 @@ async function confirmBuy() {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtPct = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const sign = (v: number) => v >= 0 ? '+' : '−'
@@ -261,37 +285,11 @@ const varClass = (v: number) => v > 0 ? 'gain' : v < 0 ? 'loss' : 'muted'
 </script>
 
 <style scoped>
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-}
-.ticker-sym {
-  font-family: var(--font-mono);
-  font-weight: 500;
-  font-size: 0.9rem;
-  color: var(--text);
-  letter-spacing: 0.04em;
-}
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+.ticker-sym { font-family: var(--font-mono); font-weight: 500; font-size: 0.9rem; color: var(--text); letter-spacing: 0.04em; }
 .mono { font-family: var(--font-mono); }
-.buy-price-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.25rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-}
+.buy-price-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; padding: 0.75rem 1rem; background: var(--bg); border-radius: var(--radius-sm); }
 .big-price { font-size: 1.1rem; font-weight: 600; color: var(--text); }
-.cost-preview {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.6rem 0.85rem;
-  background: var(--accent-dim);
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-}
+.cost-preview { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.85rem; background: var(--accent-dim); border-radius: var(--radius-sm); font-size: 0.875rem; }
+.field-hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; display: block; }
 </style>

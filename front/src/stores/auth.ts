@@ -16,18 +16,23 @@ export const useAuthStore = defineStore('auth', () => {
     const data = res.data
     localStorage.setItem('token', data.token)
     user.value = { id: data.id, name: data.name, email: data.email, balance: data.balance }
+    // Restaura o minuto do relógio do usuário logado (Req #2)
+    if (data.clockMinute !== undefined) {
+      localStorage.setItem('clockMinute', String(data.clockMinute))
+    }
   }
 
   async function register(name: string, email: string, password: string) {
     const res = await authService.register({ name, email, password })
     const data = res.data
     localStorage.setItem('token', data.token)
+    localStorage.setItem('clockMinute', '0')
     user.value = { id: data.id, name: data.name, email: data.email, balance: data.balance }
   }
 
   function logout() {
     localStorage.removeItem('token')
-    localStorage.removeItem('clockMinute')
+    // NÃO apaga clockMinute — é restaurado no próximo login pelo backend
     user.value = null
   }
 

@@ -19,7 +19,7 @@
         </div>
       </div>
 
-      <!-- Extrato (Req #6) -->
+      <!-- Extrato (Req #6) — ordem cronológica com saldo após cada lançamento -->
       <div class="card" style="padding:0;overflow:hidden;margin-top:1.5rem">
         <div class="extrato-header">Extrato</div>
         <table class="tbl">
@@ -33,7 +33,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="t in transactions" :key="t.id">
+            <tr v-for="t in transacoesComSaldo" :key="t.id">
               <td class="mono muted" style="font-size:0.78rem;white-space:nowrap">{{ fmtDate(t.createdAt) }}</td>
               <td style="font-size:0.85rem">{{ t.description }}</td>
               <td class="r">
@@ -42,7 +42,8 @@
               <td class="r mono" :class="isCredit(t.type) ? 'gain' : 'loss'">
                 {{ isCredit(t.type) ? '+' : '−' }} R$ {{ fmt(t.amount) }}
               </td>
-              <td class="r mono" style="color:var(--text-muted);font-size:0.82rem">—</td>
+              <!-- Req #6: saldo após cada lançamento calculado no cliente -->
+              <td class="r mono" style="font-size:0.85rem">R$ {{ fmt(t.balanceAfter) }}</td>
             </tr>
             <tr v-if="transactions.length === 0">
               <td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">
@@ -103,7 +104,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Navbar from '@/components/Navbar.vue'
 import Modal from '@/components/Modal.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -116,14 +117,30 @@ const auth = useAuthStore()
 interface Tx { id: number; type: string; amount: number; description: string; createdAt: string }
 const transactions = ref<Tx[]>([])
 
+// Req #6: calcula o saldo acumulado após cada lançamento no cliente
+// pois a API não retorna balance_after
+const transacoesComSaldo = computed(() => {
+  let saldo = 0
+  return transactions.value.map(t => {
+    if (isCredit(t.type)) {
+      saldo += t.amount
+    } else {
+      saldo -= t.amount
+    }
+    return { ...t, balanceAfter: saldo }
+  })
+})
+
 onMounted(loadAll)
 
 async function loadAll() {
-  const res = await userService.transactions(100)
+  const [txRes, meRes] = await Promise.all([
+    userService.transactions(100),
+    api.get('/users/me')
+  ])
   // Ordem cronológica crescente (Req #6)
-  transactions.value = [...res.data.transactions].reverse()
-  const me = await api.get('/users/me')
-  auth.setBalance(me.data.balance)
+  transactions.value = [...txRes.data.transactions].reverse()
+  auth.setBalance(meRes.data.balance)
 }
 
 // ── Modal depósito / retirada (Req #6) ────────────────────────────────────────
@@ -134,13 +151,17 @@ const modalLoading = ref(false)
 const modalError = ref('')
 
 function openModal(t: 'DEPOSIT' | 'WITHDRAW') {
-  modalType.value = t; modalDesc.value = ''; modalAmt.value = 0; modalError.value = ''
+  modalType.value = t
+  modalDesc.value = ''
+  modalAmt.value = 0
+  modalError.value = ''
 }
 
 async function confirmModal() {
   if (!modalDesc.value.trim()) { modalError.value = 'Informe uma descrição.'; return }
-  if (!modalAmt.value || modalAmt.value <= 0) { modalError.value = 'Valor deve ser positivo.'; return }
-  modalLoading.value = true; modalError.value = ''
+  if (!modalAmt.value || modalAmt.value <= 0) { modalError.value = 'Valor deve ser positivo e diferente de zero.'; return }
+  modalLoading.value = true
+  modalError.value = ''
   try {
     if (modalType.value === 'DEPOSIT') {
       await userService.deposit(modalAmt.value, modalDesc.value)
@@ -164,11 +185,13 @@ const pwdLoading = ref(false)
 const pwdMsg = ref<{ ok: boolean; text: string } | null>(null)
 
 async function submitPwd() {
-  pwdMsg.value = null; pwdLoading.value = true
+  pwdMsg.value = null
+  pwdLoading.value = true
   try {
     await authService.changePassword({ currentPassword: currentPwd.value, newPassword: newPwd.value })
     pwdMsg.value = { ok: true, text: 'Senha alterada com sucesso!' }
-    currentPwd.value = ''; newPwd.value = ''
+    currentPwd.value = ''
+    newPwd.value = ''
   } catch (e: any) {
     pwdMsg.value = { ok: false, text: e.response?.data?.error ?? 'Erro ao alterar senha' }
   } finally {
@@ -178,7 +201,12 @@ async function submitPwd() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmtDate = (dt: string) => new Date(dt).toLocaleString('pt-BR')
+
+// Req #6: exibe data/hora real do lançamento
+function fmtDate(dt: string) {
+  return new Date(dt).toLocaleString('pt-BR')
+}
+
 const isCredit = (t: string) => t === 'DEPOSIT' || t === 'SELL'
 const labelType = (t: string) => ({ DEPOSIT: 'Depósito', WITHDRAW: 'Retirada', BUY: 'Compra', SELL: 'Venda' }[t] ?? t)
 const badgeClass = (t: string) => isCredit(t) ? 'badge-gain' : 'badge-loss'
@@ -186,31 +214,12 @@ const badgeClass = (t: string) => isCredit(t) ? 'badge-gain' : 'badge-loss'
 
 <style scoped>
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
-.balance-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.5rem 2rem;
-  display: flex; align-items: center; justify-content: space-between;
-}
+.balance-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; }
 .bal-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 0.3rem; }
 .bal-val { font-family: var(--font-mono); font-size: 1.8rem; font-weight: 700; color: var(--accent); }
-.extrato-header {
-  padding: 1rem 1.25rem 0.75rem;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.95rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
+.extrato-header { padding: 1rem 1.25rem 0.75rem; font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; border-bottom: 1px solid var(--border); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .section-title { font-family: var(--font-display); font-weight: 700; margin-bottom: 1rem; }
 .pwd-form { margin-top: 1rem; max-width: 380px; }
 .mono { font-family: var(--font-mono); }
-.success-msg {
-  background: var(--gain-dim); border: 1px solid var(--gain);
-  color: var(--gain); border-radius: var(--radius-sm);
-  padding: 0.6rem 0.9rem; font-size: 0.82rem;
-}
+.success-msg { background: var(--gain-dim); border: 1px solid var(--gain); color: var(--gain); border-radius: var(--radius-sm); padding: 0.6rem 0.9rem; font-size: 0.82rem; }
 </style>

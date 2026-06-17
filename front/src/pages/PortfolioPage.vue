@@ -102,6 +102,12 @@
       <div class="field" v-if="sellType === 'limit'">
         <label>Preço mínimo (R$)</label>
         <input class="input" type="number" step="0.01" min="0.01" v-model.number="sellLimit" />
+        <span class="field-hint">
+          A venda será executada quando o preço atingir ou ultrapassar R$ {{ fmt(sellLimit) }}.
+          <template v-if="livePrice(sellPos) >= sellLimit">
+            <strong class="gain"> O preço atual já satisfaz a condição — será executada agora.</strong>
+          </template>
+        </span>
       </div>
 
       <div v-if="sellError" class="error-msg">{{ sellError }}</div>
@@ -163,7 +169,6 @@ async function loadPortfolio() {
   positions.value = res.data.positions
 }
 
-// Usa preço ao vivo do store (atualizado pelo relógio)
 function livePrice(pos: Pos) {
   return clock.prices[pos.symbol] ?? pos.currentPrice
 }
@@ -193,7 +198,7 @@ async function onAdvance(mins: number) {
   }
 }
 
-// ── Venda (Req #5) ───────────────────────────────────────────────────────────
+// ── Venda (Req #5) ────────────────────────────────────────────────────────────
 const sellPos = ref<Pos | null>(null)
 const sellQty = ref(1)
 const sellType = ref<'market' | 'limit'>('market')
@@ -212,11 +217,35 @@ function openSell(pos: Pos) {
 async function confirmSell() {
   if (!sellPos.value) return
   sellError.value = ''
-  if (!sellQty.value || sellQty.value <= 0) { sellError.value = 'Quantidade inválida.'; return }
-  if (sellQty.value > sellPos.value.quantity) { sellError.value = 'Quantidade maior que o disponível.'; return }
 
-  const price = sellType.value === 'limit' ? sellLimit.value : livePrice(sellPos.value)
-  if (price <= 0) { sellError.value = 'Preço inválido.'; return }
+  // Req #5: não aceita zero ou negativo
+  if (!sellQty.value || sellQty.value <= 0) {
+    sellError.value = 'Quantidade deve ser maior que zero.'
+    return
+  }
+  if (sellQty.value > sellPos.value.quantity) {
+    sellError.value = 'Quantidade maior que o disponível em carteira.'
+    return
+  }
+
+  const precoAtual = livePrice(sellPos.value)
+  let priceToUse: number
+
+  if (sellType.value === 'limit') {
+    if (!sellLimit.value || sellLimit.value <= 0) {
+      sellError.value = 'Informe um preço mínimo válido.'
+      return
+    }
+    // Req #5: executa imediatamente se o preço atual já está acima do limite
+    if (precoAtual >= sellLimit.value) {
+      priceToUse = precoAtual
+    } else {
+      sellError.value = `O preço atual (R$ ${fmt(precoAtual)}) está abaixo do seu mínimo (R$ ${fmt(sellLimit.value)}). Aguarde o relógio avançar até o preço atingir seu mínimo.`
+      return
+    }
+  } else {
+    priceToUse = precoAtual
+  }
 
   sellLoading.value = true
   try {
@@ -224,7 +253,7 @@ async function confirmSell() {
       stockId: sellPos.value.stockId,
       type: 'SELL',
       quantity: sellQty.value,
-      price,
+      price: priceToUse,
     })
     const me = await api.get('/users/me')
     auth.setBalance(me.data.balance)
@@ -246,13 +275,7 @@ const varClass = (v: number) => v > 0 ? 'gain' : v < 0 ? 'loss' : 'muted'
 <style scoped>
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
 .summary-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
-.sum-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem 1.5rem;
-  display: flex; flex-direction: column; gap: 0.35rem;
-}
+.sum-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.35rem; }
 .sum-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
 .sum-val { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 600; color: var(--text); }
 .sum-val small { font-size: 0.8rem; opacity: 0.75; margin-left: 0.35rem; }
@@ -265,4 +288,5 @@ const varClass = (v: number) => v > 0 ? 'gain' : v < 0 ? 'loss' : 'muted'
 .buy-price-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; padding: 0.75rem 1rem; background: var(--bg); border-radius: var(--radius-sm); flex-wrap: wrap; gap: 0.5rem; }
 .big-price { font-size: 1.1rem; font-weight: 600; color: var(--text); }
 .cost-preview { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.85rem; background: var(--accent-dim); border-radius: var(--radius-sm); font-size: 0.875rem; }
+.field-hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; display: block; }
 </style>
