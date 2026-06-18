@@ -2,61 +2,44 @@ import { Request, Response } from 'express';
 import { WatchlistService } from '../services/watchlistService.js';
 import logger from '../utils/logger.js';
 
-// Rota: GET /watchlist
 export const getWatchlist = async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
-      res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
-      return;
-    }
+    if (!req.userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    // BUG #8 CORRIGIDO: getWatchlist agora é async (busca preços da API do professor)
     const result = await WatchlistService.getWatchlist(req.userId);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Erro ao buscar watchlist:', error);
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Ocorreu um erro ao buscar a lista de ações.' });
+    logger.error('Get watchlist error:', error);
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to get watchlist' });
   }
 };
 
-// Rota: POST /watchlist
 export const addToWatchlist = async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
-      res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
-      return;
-    }
+    if (!req.userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
     const stockId = req.body.stockId;
-    if (!stockId) {
-      res.status(400).json({ error: 'O campo "stockId" é obrigatório.' });
-      return;
-    }
+    if (!stockId) { res.status(400).json({ error: 'stockId é obrigatório' }); return; }
 
     const result = WatchlistService.addToWatchlist(req.userId, stockId);
     res.status(201).json(result);
   } catch (error) {
-    logger.error('Erro ao adicionar à watchlist:', error);
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Ocorreu um erro ao adicionar a ação à lista.' });
+    logger.error('Add to watchlist error:', error);
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to add to watchlist' });
   }
 };
 
-// Rota: DELETE /watchlist/:stockId
 export const removeFromWatchlist = async (req: Request, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
-      res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
-      return;
-    }
+    if (!req.userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
     const stockId = parseInt(req.params.stockId);
-    if (isNaN(stockId)) {
-      res.status(400).json({ error: 'ID da ação inválido.' });
-      return;
-    }
+    if (isNaN(stockId)) { res.status(400).json({ error: 'stockId inválido' }); return; }
 
     const result = WatchlistService.removeFromWatchlist(req.userId, stockId);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Erro ao remover da watchlist:', error);
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Ocorreu um erro ao remover a ação da lista.' });
+    logger.error('Remove from watchlist error:', error);
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to remove from watchlist' });
   }
 };

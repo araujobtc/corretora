@@ -7,9 +7,10 @@
       </router-link>
 
       <div class="nav-links">
-        <router-link to="/market" class="nav-link" active-class="nav-link--active">Mercado</router-link>
-        <router-link to="/portfolio" class="nav-link" active-class="nav-link--active">Carteira</router-link>
-        <router-link to="/account" class="nav-link" active-class="nav-link--active">Conta</router-link>
+        <router-link to="/market"         class="nav-link" active-class="nav-link--active">Mercado</router-link>
+        <router-link to="/portfolio"      class="nav-link" active-class="nav-link--active">Carteira</router-link>
+        <router-link to="/conta-corrente" class="nav-link" active-class="nav-link--active">Conta Corrente</router-link>
+        <router-link to="/perfil"         class="nav-link" active-class="nav-link--active">Perfil</router-link>
       </div>
 
       <div class="nav-right">
@@ -64,6 +65,7 @@ function handleLogout() {
   font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+  flex-shrink: 0;
 }
 .brand-icon { font-size: 1.3rem; }
 .nav-links {
@@ -79,6 +81,7 @@ function handleLogout() {
   font-size: 0.875rem;
   font-weight: 500;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 .nav-link:hover { color: var(--text); background: var(--hover); }
 .nav-link--active { color: var(--accent); background: var(--accent-dim); }
@@ -87,6 +90,7 @@ function handleLogout() {
   align-items: center;
   gap: 1rem;
   margin-left: auto;
+  flex-shrink: 0;
 }
 .balance {
   font-family: var(--font-mono);

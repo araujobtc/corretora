@@ -10,6 +10,11 @@ export const authService = {
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post('/auth/change-password', data),
 
-  resetPassword: (data: { email: string }) =>
+  // Req #1 — Passo 1: envia e-mail com link de recuperação → /auth/forgot-password
+  forgotPassword: (data: { email: string }) =>
+    api.post('/auth/forgot-password', data),
+
+  // Req #1 — Passo 2: confirma o reset com token do link + nova senha → /auth/reset-password
+  confirmResetPassword: (data: { token: string; newPassword: string }) =>
     api.post('/auth/reset-password', data),
 }

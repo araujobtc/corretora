@@ -4,7 +4,7 @@
     <div class="page">
       <div class="page-header">
         <h1 class="page-title">Carteira</h1>
-        <router-link to="/account" class="btn btn-ghost">Conta corrente →</router-link>
+        <router-link to="/conta-corrente" class="btn btn-ghost">Conta corrente →</router-link>
       </div>
 
       <ClockBar @advance="onAdvance" />

@@ -2,18 +2,29 @@
   <div class="auth-wrap">
     <div class="auth-card">
       <h1 class="auth-title">Recuperar senha</h1>
-      <p class="auth-sub">Informe seu e-mail e enviaremos instruções.</p>
+      <p class="auth-sub">Informe seu e-mail e enviaremos um link para redefinir sua senha.</p>
 
       <div v-if="success" class="success-msg">{{ success }}</div>
       <div v-if="error" class="error-msg">{{ error }}</div>
 
       <div class="field">
         <label>E-mail</label>
-        <input class="input" type="email" v-model="email" placeholder="voce@email.com" @keyup.enter="submit" />
+        <input
+          class="input"
+          type="email"
+          v-model="email"
+          placeholder="voce@email.com"
+          @keyup.enter="submit"
+        />
       </div>
 
-      <button class="btn btn-primary" style="width:100%;margin-top:0.5rem" :disabled="loading" @click="submit">
-        {{ loading ? 'Enviando…' : 'Enviar instruções' }}
+      <button
+        class="btn btn-primary"
+        style="width:100%;margin-top:0.5rem"
+        :disabled="loading"
+        @click="submit"
+      >
+        {{ loading ? 'Enviando…' : 'Enviar link de recuperação' }}
       </button>
 
       <div class="auth-footer">
@@ -35,12 +46,18 @@ const success = ref('')
 async function submit() {
   error.value = ''
   success.value = ''
+  if (!email.value.trim()) {
+    error.value = 'Informe o seu e-mail.'
+    return
+  }
   loading.value = true
   try {
-    await authService.resetPassword({ email: email.value })
-    success.value = 'Se o e-mail existir, as instruções foram enviadas.'
+    // Chama /auth/forgot-password — passo 1 do fluxo de recuperação
+    await authService.forgotPassword({ email: email.value })
+    success.value = 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.'
+    email.value = ''
   } catch (e: any) {
-    error.value = e.response?.data?.error ?? 'Erro ao enviar'
+    error.value = e.response?.data?.error ?? 'Erro ao enviar o link. Tente novamente.'
   } finally {
     loading.value = false
   }
