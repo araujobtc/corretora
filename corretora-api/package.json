@@ -18,19 +18,19 @@
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.5",
     "nodemailer": "^6.9.9",
-    "resend": "^4.x.x"
-  },
-  "devDependencies": {
+    "resend": "^4.x.x",
+    "typescript": "^5.3.3",
     "@types/express": "^4.17.21",
     "@types/node": "^20.10.6",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/pg": "^8.11.6",
     "@types/cors": "^2.8.17",
-    "typescript": "^5.3.3",
-    "tsx": "^4.7.0",
-    "ts-node": "^10.9.2",
     "@types/nodemailer": "^6.4.14"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "ts-node": "^10.9.2"
   },
   "engines": {
     "node": "20.x"
