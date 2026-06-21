@@ -1,8 +1,19 @@
-databases:
-  - name: corretora-db
-    plan: free
-    databaseName: corretora
-    user: corretora
+# Este arquivo só tem efeito se você fizer deploy via "New > Blueprint" no Render,
+# apontando para este repositório. Se você já criou o serviço web e o banco
+# manualmente pelo dashboard (caso mais comum), este arquivo é ignorado —
+# configure as variáveis de ambiente direto na aba "Environment" do seu Web Service.
+#
+# Variáveis necessárias no Web Service (Environment):
+#   NODE_ENV       = production
+#   JWT_SECRET     = qualquer string aleatória longa
+#   DATABASE_URL   = Internal Database URL do seu Postgres (aba "Connect" do banco)
+#   CORS_ORIGIN    = URL do seu frontend (ex: https://seu-app.vercel.app)
+#   RESEND_API_KEY = chave da Resend, se for usar recuperação de senha por e-mail (opcional)
+#
+# IMPORTANTE: use a Internal Database URL, não a External — ela só funciona
+# se o Web Service e o banco estiverem na MESMA região do Render, mas é mais
+# rápida e não passa pela internet pública. A External serve para acesso externo
+# (ex: do seu computador local), não para o próprio serviço hospedado no Render.
 
 services:
   - type: web
@@ -17,6 +28,4 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: corretora-db
-          property: connectionString
+        sync: false   # defina manualmente no dashboard com a Internal Database URL do seu banco
