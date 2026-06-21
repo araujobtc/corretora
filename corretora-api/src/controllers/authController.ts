@@ -4,7 +4,7 @@ import logger from '../utils/logger.js';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const result = AuthService.register(req.body);
+    const result = await AuthService.register(req.body);
     res.status(201).json(result);
   } catch (error) {
     logger.error('Register error:', error);
@@ -14,7 +14,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const result = AuthService.login(req.body);
+    const result = await AuthService.login(req.body);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Login error:', error);
@@ -25,7 +25,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 export const changePassword = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.userId) { res.status(401).json({ error: 'Não autorizado' }); return; }
-    const result = AuthService.changePassword(req.userId, req.body);
+    const result = await AuthService.changePassword(req.userId, req.body);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Change password error:', error);
@@ -48,7 +48,7 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
 export const resetPassword = async (req: Request, res: Response): Promise<void> => {
   try {
     const { token, newPassword } = req.body;
-    const result = AuthService.resetPassword(token, newPassword);
+    const result = await AuthService.resetPassword(token, newPassword);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Reset password error:', error);

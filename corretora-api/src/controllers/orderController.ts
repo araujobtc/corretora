@@ -13,7 +13,7 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
     const offset = parseInt(req.query.offset as string) || 0;
 
-    const result = OrderService.getOrders(req.userId, limit, offset);
+    const result = await OrderService.getOrders(req.userId, limit, offset);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Erro ao buscar ordens:', error);
@@ -31,7 +31,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const result = OrderService.createOrder(req.userId, req.body);
+    const result = await OrderService.createOrder(req.userId, req.body);
     res.status(201).json(result);
   } catch (error) {
     logger.error('Erro ao criar ordem:', error);
@@ -53,7 +53,7 @@ export const getOrderHistory = async (req: Request, res: Response): Promise<void
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
     const offset = parseInt(req.query.offset as string) || 0;
 
-    const result = OrderService.getOrderHistory(req.userId, stockId, limit, offset);
+    const result = await OrderService.getOrderHistory(req.userId, stockId, limit, offset);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Erro ao buscar histórico de ordens:', error);

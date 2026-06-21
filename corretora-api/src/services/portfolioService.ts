@@ -1,10 +1,10 @@
-import db from '../config/database.js';
+import { dbQuery } from '../config/database.js';
 import logger from '../utils/logger.js';
 
 export class PortfolioService {
-  static getPortfolio(userId: number) {
+  static async getPortfolio(userId: number) {
     try {
-      const portfolio = db.prepare(`
+      const result = await dbQuery(`
         SELECT 
           p.id,
           p.stock_id,
@@ -21,9 +21,11 @@ export class PortfolioService {
           p.updated_at
         FROM portfolio p
         JOIN stocks s ON p.stock_id = s.id
-        WHERE p.user_id = ? AND p.quantity > 0
+        WHERE p.user_id = $1 AND p.quantity > 0
         ORDER BY s.symbol
-      `).all(userId) as any[];
+      `, [userId]);
+
+      const portfolio = result.rows;
 
       const totalInvested = portfolio.reduce((sum, item) => sum + parseFloat(item.invested_value || 0), 0);
       const totalCurrent = portfolio.reduce((sum, item) => sum + parseFloat(item.current_value || 0), 0);
@@ -59,9 +61,9 @@ export class PortfolioService {
     }
   }
 
-  static getPosition(userId: number, stockId: number) {
+  static async getPosition(userId: number, stockId: number) {
     try {
-      const position = db.prepare(`
+      const result = await dbQuery(`
         SELECT 
           p.id,
           p.stock_id,
@@ -74,8 +76,10 @@ export class PortfolioService {
           p.updated_at
         FROM portfolio p
         JOIN stocks s ON p.stock_id = s.id
-        WHERE p.user_id = ? AND p.stock_id = ?
-      `).get(userId, stockId) as any;
+        WHERE p.user_id = $1 AND p.stock_id = $2
+      `, [userId, stockId]);
+
+      const position = result.rows[0];
 
       if (!position || position.quantity === 0) {
         throw new Error('Posição não encontrada na carteira.');

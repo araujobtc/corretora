@@ -10,7 +10,7 @@ export const getPortfolio = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const result = PortfolioService.getPortfolio(req.userId);
+    const result = await PortfolioService.getPortfolio(req.userId);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Erro ao buscar carteira:', error);
@@ -34,7 +34,7 @@ export const getPosition = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const result = PortfolioService.getPosition(req.userId, stockId);
+    const result = await PortfolioService.getPosition(req.userId, stockId);
     res.status(200).json(result);
   } catch (error) {
     logger.error('Erro ao buscar posição:', error);

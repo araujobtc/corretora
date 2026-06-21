@@ -1,4 +1,4 @@
-import db from '../config/database.js';
+import { dbQuery } from '../config/database.js';
 import { StockService } from './stockService.js';
 import logger from '../utils/logger.js';
 
@@ -9,16 +9,16 @@ export class WatchlistService {
    */
   static async getWatchlist(userId: number) {
     try {
-      const user = db.prepare('SELECT clock_minute FROM users WHERE id = ?').get(userId) as any;
-      const minuto: number = user?.clock_minute ?? 0;
+      const userResult = await dbQuery('SELECT clock_minute FROM users WHERE id = $1', [userId]);
+      const minuto: number = userResult.rows[0]?.clock_minute ?? 0;
 
-      const rows = db.prepare(`
+      const rowsResult = await dbQuery(`
         SELECT w.id, w.stock_id, s.symbol, s.closing_price, w.created_at
         FROM watchlist w
         JOIN stocks s ON w.stock_id = s.id
-        WHERE w.user_id = ?
+        WHERE w.user_id = $1
         ORDER BY s.symbol
-      `).all(userId) as any[];
+      `, [userId]);
 
       // Busca preços atualizados da API do professor
       let precoMap: Record<string, number> = {};
@@ -29,7 +29,7 @@ export class WatchlistService {
         logger.warn('Não foi possível buscar preços da API do professor:', err);
       }
 
-      return rows.map(item => {
+      return rowsResult.rows.map(item => {
         const fechamento = parseFloat(item.closing_price);
         const preco = precoMap[item.symbol] ?? fechamento;
         const variacaoNominal = parseFloat((preco - fechamento).toFixed(2));
@@ -55,23 +55,23 @@ export class WatchlistService {
     }
   }
 
-  static addToWatchlist(userId: number, stockId: number) {
+  static async addToWatchlist(userId: number, stockId: number) {
     try {
-      const stock = db.prepare('SELECT id FROM stocks WHERE id = ?').get(stockId);
-      if (!stock) throw new Error('Ação não encontrada');
+      const stockResult = await dbQuery('SELECT id FROM stocks WHERE id = $1', [stockId]);
+      if (!stockResult.rows[0]) throw new Error('Ação não encontrada');
 
-      const existing = db.prepare(
-        'SELECT id FROM watchlist WHERE user_id = ? AND stock_id = ?'
-      ).get(userId, stockId);
+      const existingResult = await dbQuery(
+        'SELECT id FROM watchlist WHERE user_id = $1 AND stock_id = $2',
+        [userId, stockId]
+      );
+      if (existingResult.rows[0]) throw new Error('Ação já está na watchlist');
 
-      if (existing) throw new Error('Ação já está na watchlist');
-
-      const result = db.prepare(`
-        INSERT INTO watchlist (user_id, stock_id) VALUES (?, ?)
-      `).run(userId, stockId);
+      const insertResult = await dbQuery(`
+        INSERT INTO watchlist (user_id, stock_id) VALUES ($1, $2) RETURNING id
+      `, [userId, stockId]);
 
       return {
-        id: result.lastInsertRowid as number,
+        id: insertResult.rows[0].id as number,
         stockId,
         message: 'Ação adicionada à watchlist'
       };
@@ -81,16 +81,15 @@ export class WatchlistService {
     }
   }
 
-  static removeFromWatchlist(userId: number, stockId: number) {
+  static async removeFromWatchlist(userId: number, stockId: number) {
     try {
-      const item = db.prepare(
-        'SELECT id FROM watchlist WHERE user_id = ? AND stock_id = ?'
-      ).get(userId, stockId);
+      const itemResult = await dbQuery(
+        'SELECT id FROM watchlist WHERE user_id = $1 AND stock_id = $2',
+        [userId, stockId]
+      );
+      if (!itemResult.rows[0]) throw new Error('Ação não está na watchlist');
 
-      if (!item) throw new Error('Ação não está na watchlist');
-
-      db.prepare('DELETE FROM watchlist WHERE user_id = ? AND stock_id = ?')
-        .run(userId, stockId);
+      await dbQuery('DELETE FROM watchlist WHERE user_id = $1 AND stock_id = $2', [userId, stockId]);
 
       return { message: 'Ação removida da watchlist' };
     } catch (error) {
@@ -99,11 +98,15 @@ export class WatchlistService {
     }
   }
 
-  static isInWatchlist(userId: number, stockId: number): boolean {
+  static async isInWatchlist(userId: number, stockId: number): Promise<boolean> {
     try {
-      return !!db.prepare(
-        'SELECT id FROM watchlist WHERE user_id = ? AND stock_id = ?'
-      ).get(userId, stockId);
-    } catch { return false; }
+      const result = await dbQuery(
+        'SELECT id FROM watchlist WHERE user_id = $1 AND stock_id = $2',
+        [userId, stockId]
+      );
+      return !!result.rows[0];
+    } catch {
+      return false;
+    }
   }
 }

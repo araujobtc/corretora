@@ -1,143 +1,150 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { Pool, PoolClient } from 'pg';
 import logger from '../utils/logger.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const connectionString = process.env.DATABASE_URL;
 
-const dataDir =
-  process.env.NODE_ENV === 'production'
-    ? '/opt/render/project/src/data'
-    : path.join(__dirname, '../../data');
-
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+if (!connectionString) {
+  throw new Error(
+    'DATABASE_URL não definida. Configure a string de conexão do PostgreSQL (ex: postgresql://user:senha@host:5432/banco).'
+  );
 }
 
-const dbPath = path.join(dataDir, 'database.db');
-const db = new Database(dbPath);
+export const pool = new Pool({
+  connectionString,
+  // Render e a maioria dos provedores de Postgres gerenciado exigem SSL em produção,
+  // mas usam certificado autoassinado — por isso desabilitamos a validação da CA.
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+});
 
-export default db;
+pool.on('error', (err) => {
+  logger.error('Erro inesperado em uma conexão ociosa do pool do PostgreSQL:', err);
+});
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+/** Executa uma query simples usando uma conexão do pool. */
+export async function dbQuery(text: string, params: any[] = []) {
+  return pool.query(text, params);
+}
 
-function addColumnIfNotExists(table: string, column: string, definition: string) {
-  const info = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
-  if (!info.find(col => col.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-    logger.info(`Migração: coluna ${column} adicionada à tabela ${table}`);
+/**
+ * Executa uma série de operações dentro de uma transação.
+ * Faz commit automático se `fn` resolver com sucesso, ou rollback se lançar erro.
+ */
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
-export function initializeDatabase() {
+export async function initializeDatabase() {
   try {
-    db.exec(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
-        balance REAL NOT NULL DEFAULT 0.00,
+        balance NUMERIC(14,2) NOT NULL DEFAULT 0.00,
         clock_minute INTEGER NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    db.exec(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS stocks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         symbol TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
-        current_price REAL NOT NULL DEFAULT 0,
-        closing_price REAL NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        current_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+        closing_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    db.exec(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS portfolio (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        stock_id INTEGER NOT NULL,
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        stock_id INTEGER NOT NULL REFERENCES stocks(id),
         quantity INTEGER NOT NULL DEFAULT 0,
-        average_price REAL NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (stock_id) REFERENCES stocks(id),
+        average_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(user_id, stock_id)
       )
     `);
 
-    db.exec(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        stock_id INTEGER NOT NULL,
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        stock_id INTEGER NOT NULL REFERENCES stocks(id),
         type TEXT NOT NULL CHECK(type IN ('BUY', 'SELL')),
         quantity INTEGER NOT NULL,
-        price REAL NOT NULL,
-        limit_price REAL,
-        total REAL NOT NULL DEFAULT 0,
+        price NUMERIC(14,2) NOT NULL,
+        limit_price NUMERIC(14,2),
+        total NUMERIC(14,2) NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'EXECUTED' CHECK(status IN ('PENDING', 'EXECUTED', 'CANCELLED')),
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (stock_id) REFERENCES stocks(id)
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    db.exec(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
         type TEXT NOT NULL CHECK(type IN ('DEPOSIT', 'WITHDRAW', 'BUY', 'SELL')),
-        amount REAL NOT NULL,
+        amount NUMERIC(14,2) NOT NULL,
         description TEXT,
-        balance_after REAL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        balance_after NUMERIC(14,2),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    db.exec(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS watchlist (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        stock_id INTEGER NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id),
-        FOREIGN KEY (stock_id) REFERENCES stocks(id),
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        stock_id INTEGER NOT NULL REFERENCES stocks(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(user_id, stock_id)
       )
     `);
 
     // Tabela para tokens de reset de senha
-    db.exec(`
+    await pool.query(`
       CREATE TABLE IF NOT EXISTS password_reset_tokens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
         token TEXT UNIQUE NOT NULL,
-        expires_at DATETIME NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
         used INTEGER NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Migrations para bancos já existentes
-    addColumnIfNotExists('stocks', 'closing_price', 'REAL NOT NULL DEFAULT 0');
-    addColumnIfNotExists('users', 'clock_minute', 'INTEGER NOT NULL DEFAULT 0');
-    addColumnIfNotExists('transactions', 'balance_after', 'REAL');
-    addColumnIfNotExists('orders', 'limit_price', 'REAL');
+    // Migrações para bancos já existentes (idempotentes — Postgres 9.6+ suporta IF NOT EXISTS em ADD COLUMN)
+    await pool.query(`ALTER TABLE stocks ADD COLUMN IF NOT EXISTS closing_price NUMERIC(14,2) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS clock_minute INTEGER NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS balance_after NUMERIC(14,2)`);
+    await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS limit_price NUMERIC(14,2)`);
 
-    logger.info('Banco de dados inicializado com sucesso');
+    logger.info('Banco de dados (PostgreSQL) inicializado com sucesso');
   } catch (error) {
     logger.error('Falha ao inicializar banco de dados:', error);
     throw error;
   }
 }
+
+export default pool;

@@ -1,4 +1,4 @@
-import db from '../config/database.js';
+import { dbQuery } from '../config/database.js';
 import logger from '../utils/logger.js';
 
 const PROFESSOR_BASE = 'https://raw.githubusercontent.com/marciobarros/dsw-simulador-corretora/refs/heads/main';
@@ -39,11 +39,11 @@ export class StockService {
    */
   static async getAll(limit = 50, offset = 0) {
     // Busca ações do banco (seed já populou)
-    const rows = db.prepare(`
-      SELECT id, symbol, closing_price FROM stocks ORDER BY symbol LIMIT ? OFFSET ?
-    `).all(limit, offset) as any[];
+    const rowsResult = await dbQuery(`
+      SELECT id, symbol, closing_price FROM stocks ORDER BY symbol LIMIT $1 OFFSET $2
+    `, [limit, offset]);
 
-    const countResult = db.prepare('SELECT COUNT(*) as count FROM stocks').get() as any;
+    const countResult = await dbQuery('SELECT COUNT(*) as count FROM stocks');
 
     // Enriquece com preço de fechamento da API do professor (mais atualizado)
     let fechamentos: Record<string, number> = {};
@@ -55,13 +55,13 @@ export class StockService {
     }
 
     return {
-      stocks: rows.map(r => ({
+      stocks: rowsResult.rows.map(r => ({
         id: r.id,                            // ID real do banco
         symbol: r.symbol,
         name: r.symbol,
         closingPrice: fechamentos[r.symbol] ?? parseFloat(r.closing_price),
       })),
-      total: countResult.count,
+      total: parseInt(countResult.rows[0].count, 10),
       limit,
       offset,
     };
@@ -69,9 +69,12 @@ export class StockService {
 
   /** Busca uma ação pelo símbolo — retorna ID real do banco */
   static async getBySymbol(symbol: string) {
-    const stock = db.prepare(
-      'SELECT id, symbol, closing_price FROM stocks WHERE symbol = ? COLLATE NOCASE'
-    ).get(symbol) as any;
+    // ILIKE faz a comparação sem diferenciar maiúsculas/minúsculas (equivalente ao COLLATE NOCASE do SQLite)
+    const result = await dbQuery(
+      'SELECT id, symbol, closing_price FROM stocks WHERE symbol ILIKE $1',
+      [symbol]
+    );
+    const stock = result.rows[0];
     if (!stock) throw new Error('Stock not found');
 
     let closingPrice = parseFloat(stock.closing_price);
@@ -84,13 +87,13 @@ export class StockService {
     return { id: stock.id, symbol: stock.symbol, name: stock.symbol, closingPrice };
   }
 
-  /** Busca ações por query no símbolo — retorna IDs reais do banco */
-  static async search(query: string) {
-    const rows = db.prepare(`
+  /** Busca ações por termo no símbolo — retorna IDs reais do banco */
+  static async search(termo: string) {
+    const result = await dbQuery(`
       SELECT id, symbol, closing_price FROM stocks
-      WHERE symbol LIKE ? COLLATE NOCASE
+      WHERE symbol ILIKE $1
       ORDER BY symbol LIMIT 20
-    `).all(`%${query.toUpperCase()}%`) as any[];
+    `, [`%${termo.toUpperCase()}%`]);
 
     let fechamentos: Record<string, number> = {};
     try {
@@ -98,7 +101,7 @@ export class StockService {
       for (const t of tickers) fechamentos[t.ticker] = t.fechamento;
     } catch { /* usa banco */ }
 
-    return rows.map(r => ({
+    return result.rows.map(r => ({
       id: r.id,
       symbol: r.symbol,
       name: r.symbol,

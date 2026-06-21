@@ -1,3 +1,9 @@
+databases:
+  - name: corretora-db
+    plan: free
+    databaseName: corretora
+    user: corretora
+
 services:
   - type: web
     name: corretora-api
@@ -10,3 +16,7 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: corretora-db
+          property: connectionString
