@@ -18,7 +18,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    res.status(401).json({ error: 'Token de acesso necessário ' });
+    res.status(401).json({ error: 'Você precisa estar autenticado para acessar este recurso.' });
     return;
   }
 
@@ -28,8 +28,8 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
     req.user = { id: decoded.userId, email: decoded.email, name: decoded.name };
     next();
   } catch (error) {
-    logger.error('Verificação de token falhou :', error);
-    res.status(403).json({ error: 'Token inválido ou expiradodo' });
+    logger.error('Falha na verificação do token:', error);
+    res.status(403).json({ error: 'Token inválido ou expirado. Faça login novamente.' });
   }
 }
 

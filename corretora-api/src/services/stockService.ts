@@ -1,3 +1,4 @@
+import { dbQuery } from '../config/database.js';
 import logger from '../utils/logger.js';
 
 const PROFESSOR_BASE = 'https://raw.githubusercontent.com/marciobarros/dsw-simulador-corretora/refs/heads/main';
@@ -12,16 +13,14 @@ export interface PrecoTicker {
   preco: number;
 }
 
+// Cache de tickers da API do professor
 let tickersCache: Ticker[] | null = null;
 let tickersCacheAt = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function fetchTickers(): Promise<Ticker[]> {
   const now = Date.now();
-
-  if (tickersCache && now - tickersCacheAt < CACHE_TTL_MS) {
-    return tickersCache;
-  }
+  if (tickersCache && now - tickersCacheAt < CACHE_TTL_MS) return tickersCache;
 
   const url = `${PROFESSOR_BASE}/tickers.json`;
   const resp = await fetch(url);
@@ -37,52 +36,80 @@ async function fetchTickers(): Promise<Ticker[]> {
 }
 
 export class StockService {
+  /**
+   * BUG #7 CORRIGIDO: lista ações usando IDs reais do banco (não IDs calculados).
+   * O banco é a fonte de verdade dos IDs — a API do professor fornece apenas os preços.
+   */
   static async getAll(limit = 50, offset = 0) {
-    const tickers = await fetchTickers();
+    // Busca ações do banco (seed já populou)
+    const rowsResult = await dbQuery(`
+      SELECT id, symbol, closing_price FROM stocks ORDER BY symbol LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    const countResult = await dbQuery('SELECT COUNT(*) as count FROM stocks');
+
+    // Enriquece com preço de fechamento da API do professor (mais atualizado)
+    let fechamentos: Record<string, number> = {};
+    try {
+      const tickers = await fetchTickers();
+      for (const t of tickers) fechamentos[t.ticker] = t.fechamento;
+    } catch (err) {
+      logger.warn('Não foi possível buscar fechamentos da API do professor, usando banco local:', err);
+    }
 
     return {
-      stocks: tickers.slice(offset, offset + limit).map((t, i) => ({
-        id: offset + i + 1,
-        symbol: t.ticker,
-        name: t.ticker,
-        closingPrice: t.fechamento
+      stocks: rowsResult.rows.map(r => ({
+        id: r.id,                            // ID real do banco
+        symbol: r.symbol,
+        name: r.symbol,
+        closingPrice: fechamentos[r.symbol] ?? parseFloat(r.closing_price),
       })),
-      total: tickers.length,
+      total: parseInt(countResult.rows[0].count, 10),
       limit,
       offset
     };
   }
 
+  /** Busca uma ação pelo símbolo — retorna ID real do banco */
   static async getBySymbol(symbol: string) {
-    const tickers = await fetchTickers();
-
-    const ticker = tickers.find(
-      t => t.ticker.toUpperCase() === symbol.toUpperCase()
+    // ILIKE faz a comparação sem diferenciar maiúsculas/minúsculas (equivalente ao COLLATE NOCASE do SQLite)
+    const result = await dbQuery(
+      'SELECT id, symbol, closing_price FROM stocks WHERE symbol ILIKE $1',
+      [symbol]
     );
+    const stock = result.rows[0];
+    if (!stock) throw new Error('Stock not found');
 
-    if (!ticker) {
-      throw new Error('Stock not found');
-    }
+    let closingPrice = parseFloat(stock.closing_price);
+    try {
+      const tickers = await fetchTickers();
+      const t = tickers.find(t => t.ticker.toUpperCase() === symbol.toUpperCase());
+      if (t) closingPrice = t.fechamento;
+    } catch { /* usa preço do banco */ }
 
-    return {
-      symbol: ticker.ticker,
-      name: ticker.ticker,
-      closingPrice: ticker.fechamento
-    };
+    return { id: stock.id, symbol: stock.symbol, name: stock.symbol, closingPrice };
   }
 
-  static async search(query: string) {
-    const tickers = await fetchTickers();
-    const q = query.toUpperCase();
+  /** Busca ações por termo no símbolo — retorna IDs reais do banco */
+  static async search(termo: string) {
+    const result = await dbQuery(`
+      SELECT id, symbol, closing_price FROM stocks
+      WHERE symbol ILIKE $1
+      ORDER BY symbol LIMIT 20
+    `, [`%${termo.toUpperCase()}%`]);
 
-    return tickers
-      .filter(t => t.ticker.includes(q))
-      .slice(0, 20)
-      .map(t => ({
-        symbol: t.ticker,
-        name: t.ticker,
-        closingPrice: t.fechamento
-      }));
+    let fechamentos: Record<string, number> = {};
+    try {
+      const tickers = await fetchTickers();
+      for (const t of tickers) fechamentos[t.ticker] = t.fechamento;
+    } catch { /* usa banco */ }
+
+    return result.rows.map(r => ({
+      id: r.id,
+      symbol: r.symbol,
+      name: r.symbol,
+      closingPrice: fechamentos[r.symbol] ?? parseFloat(r.closing_price),
+    }));
   }
 
   static async getPricesByMinuto(minuto: number): Promise<PrecoTicker[]> {

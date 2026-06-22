@@ -12,7 +12,7 @@ Uma API Express completa para uma plataforma de corretora de valores, com autent
 - ✅ Watchlist de ações
 - ✅ Validação com Zod
 - ✅ Logging com Pino
-- ✅ Banco de dados SQLite com melhor desempenho
+- ✅ Banco de dados PostgreSQL (driver `pg`, pool de conexões)
 - ✅ TypeScript completo
 
 ## 📋 Arquitetura
@@ -162,7 +162,21 @@ O token expira em 7 dias.
 
 ## 📊 Banco de Dados
 
-A API usa SQLite com melhor desempenho (WAL mode). O banco é criado automaticamente em `data/database.db`.
+A API usa PostgreSQL via o driver `pg`. As tabelas são criadas automaticamente (CREATE TABLE IF NOT EXISTS) na inicialização do servidor, desde que a variável `DATABASE_URL` aponte para um banco PostgreSQL válido.
+
+Para desenvolvimento local, você pode rodar um Postgres com Docker:
+
+```bash
+docker run --name corretora-db -e POSTGRES_PASSWORD=senha -e POSTGRES_DB=corretora -p 5432:5432 -d postgres:16
+```
+
+E então definir no `.env`:
+
+```
+DATABASE_URL=postgresql://postgres:senha@localhost:5432/corretora
+```
+
+Em produção no Render, crie um banco PostgreSQL gratuito no dashboard (ou use o `render.yaml` incluído, que já provisiona o banco e injeta `DATABASE_URL` automaticamente no serviço web).
 
 ### Tabelas
 - `users` - Usuários da plataforma
@@ -179,7 +193,7 @@ A API usa SQLite com melhor desempenho (WAL mode). O banco é criado automaticam
 - **JWT** - Autenticação
 - **bcryptjs** - Hash de senhas
 - **Pino** - Logging
-- **better-sqlite3** - Banco de dados
+- **pg** - Driver PostgreSQL
 - **TypeScript** - Type safety
 
 ## 🔧 Variáveis de Ambiente
@@ -189,7 +203,7 @@ PORT - Porta do servidor (padrão: 3000)
 NODE_ENV - Ambiente (development/production)
 LOG_LEVEL - Nível de logging (debug/info/warn/error)
 JWT_SECRET - Chave secreta para JWT
-DATABASE_URL - Caminho do banco de dados
+DATABASE_URL - String de conexão do PostgreSQL (ex: postgresql://usuario:senha@host:5432/banco)
 CORS_ORIGIN - Origem CORS permitida
 ```
 

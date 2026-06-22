@@ -1,5 +1,6 @@
 import app from './app.js';
 import logger from './utils/logger.js';
+import { pool } from './config/database.js';
 
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -31,7 +32,7 @@ process.on('SIGTERM', () => {
   logger.info('SIGTERM signal received: closing HTTP server');
   server.close(() => {
     logger.info('HTTP server closed');
-    process.exit(0);
+    pool.end().finally(() => process.exit(0));
   });
 });
 
@@ -39,7 +40,7 @@ process.on('SIGINT', () => {
   logger.info('SIGINT signal received: closing HTTP server');
   server.close(() => {
     logger.info('HTTP server closed');
-    process.exit(0);
+    pool.end().finally(() => process.exit(0));
   });
 });
 

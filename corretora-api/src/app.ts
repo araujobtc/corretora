@@ -15,7 +15,8 @@ import relogioRoutes from './routes/relogioRoutes.js';
 
 const app: Express = express();
 
-initializeDatabase();
+await initializeDatabase();
+await seedDatabase();
 
 app.use(cors({
   origin: true,
@@ -57,7 +58,5 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
   });
 });
-
-seedDatabase().catch((err: Error) => logger.error('Seed falhou:', err));
 
 export default app;

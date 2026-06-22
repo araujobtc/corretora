@@ -1,36 +1,28 @@
-import db from '../config/database.js';
+import { dbQuery, withTransaction } from '../config/database.js';
 import { CreateOrderInput } from '../schemas/index.js';
 import logger from '../utils/logger.js';
 
 export class OrderService {
-  static getOrders(userId: number, limit: number = 50, offset: number = 0) {
+  static async getOrders(userId: number, limit: number = 50, offset: number = 0) {
     try {
-      const orders = db.prepare(`
+      const ordersResult = await dbQuery(`
         SELECT 
-          o.id,
-          o.stock_id,
-          s.symbol,
-          s.name,
-          o.type,
-          o.quantity,
-          o.price,
-          o.total,
-          o.status,
-          o.created_at,
-          o.updated_at
+          o.id, o.stock_id, s.symbol, s.name,
+          o.type, o.quantity, o.price, o.limit_price,
+          o.total, o.status, o.created_at, o.updated_at
         FROM orders o
         JOIN stocks s ON o.stock_id = s.id
-        WHERE o.user_id = ?
+        WHERE o.user_id = $1
         ORDER BY o.created_at DESC
-        LIMIT ? OFFSET ?
-      `).all(userId, limit, offset) as any[];
+        LIMIT $2 OFFSET $3
+      `, [userId, limit, offset]);
 
-      const countResult = db.prepare(`
-        SELECT COUNT(*) as count FROM orders WHERE user_id = ?
-      `).get(userId) as any;
+      const countResult = await dbQuery(
+        'SELECT COUNT(*) as count FROM orders WHERE user_id = $1', [userId]
+      );
 
       return {
-        orders: orders.map(o => ({
+        orders: ordersResult.rows.map(o => ({
           id: o.id,
           stockId: o.stock_id,
           symbol: o.symbol,
@@ -38,12 +30,13 @@ export class OrderService {
           type: o.type,
           quantity: o.quantity,
           price: parseFloat(o.price),
+          limitPrice: o.limit_price ? parseFloat(o.limit_price) : null,
           total: parseFloat(o.total),
           status: o.status,
           createdAt: o.created_at,
           updatedAt: o.updated_at
         })),
-        total: countResult.count,
+        total: parseInt(countResult.rows[0].count, 10),
         limit,
         offset
       };
@@ -53,101 +46,140 @@ export class OrderService {
     }
   }
 
-  static createOrder(userId: number, data: CreateOrderInput) {
+  static async createOrder(userId: number, data: CreateOrderInput) {
     try {
-      // Get stock info
-      const stock = db.prepare('SELECT current_price FROM stocks WHERE id = ?').get(data.stockId) as any;
-      if (!stock) {
-        throw new Error('Ação não encontrada');
-      }
+      const stockResult = await dbQuery('SELECT id, symbol, current_price FROM stocks WHERE id = $1', [data.stockId]);
+      const stock = stockResult.rows[0];
+      if (!stock) throw new Error('Ação não encontrada');
 
-      // Get user balance
-      const user = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
+      const userResult = await dbQuery('SELECT balance, clock_minute FROM users WHERE id = $1', [userId]);
+      const user = userResult.rows[0];
       const userBalance = parseFloat(user.balance);
+      const relogioStr = OrderService.formatarHora(user.clock_minute ?? 0);
 
+      // BUG #2 CORRIGIDO: ordens condicionais (limit_price) ficam PENDING
+      const isLimitOrder = data.limitPrice !== undefined && data.limitPrice !== null;
       const total = data.quantity * data.price;
 
       if (data.type === 'BUY') {
-        if (userBalance < total) {
-          throw new Error('Saldo insuficiente para compra');
+        if (!isLimitOrder) {
+          // Compra a mercado: executa imediatamente — verifica saldo
+          if (userBalance < total) throw new Error('Saldo insuficiente para realizar a compra');
         }
+        // Ordem condicional: não valida saldo agora — será validado na execução
       } else if (data.type === 'SELL') {
-        // Check if user has enough shares
-        const position = db.prepare(
-          'SELECT quantity FROM portfolio WHERE user_id = ? AND stock_id = ?'
-        ).get(userId, data.stockId) as any;
+        const positionResult = await dbQuery(
+          'SELECT quantity FROM portfolio WHERE user_id = $1 AND stock_id = $2',
+          [userId, data.stockId]
+        );
+        const position = positionResult.rows[0];
 
-        if (!position || position.quantity < data.quantity) {
-          throw new Error('Ações insuficientes para vender');
+        if (!isLimitOrder) {
+          // Venda a mercado: precisa ter ações agora
+          if (!position || position.quantity < data.quantity) {
+            throw new Error('Quantidade de ações insuficiente para vender');
+          }
         }
+        // Ordem condicional: verifica no momento da execução
       }
 
-      const transaction = db.transaction(() => {
-        // Create order
-        const result = db.prepare(`
-          INSERT INTO orders (user_id, stock_id, type, quantity, price, total, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(userId, data.stockId, data.type, data.quantity, data.price, total, 'EXECUTED');
+      const status = isLimitOrder ? 'PENDING' : 'EXECUTED';
 
-        const orderId = result.lastInsertRowid as number;
+      const orderId = await withTransaction(async (client) => {
+        // Cria a ordem
+        const insertResult = await client.query(`
+          INSERT INTO orders (user_id, stock_id, type, quantity, price, limit_price, total, status)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id
+        `, [
+          userId, data.stockId, data.type, data.quantity,
+          data.price, data.limitPrice ?? null, total, status
+        ]);
 
-        if (data.type === 'BUY') {
-          // Update user balance
-          db.prepare('UPDATE users SET balance = balance - ? WHERE id = ?')
-            .run(total, userId);
+        // BUG #3 CORRIGIDO: usa orderId real ao invés de hardcoded 1
+        const orderId = insertResult.rows[0].id as number;
 
-          // Update or create portfolio position
-          const existingPosition = db.prepare(
-            'SELECT id, quantity, average_price FROM portfolio WHERE user_id = ? AND stock_id = ?'
-          ).get(userId, data.stockId) as any;
+        if (status === 'EXECUTED') {
+          if (data.type === 'BUY') {
+            await client.query(
+              'UPDATE users SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+              [total, userId]
+            );
 
-          if (existingPosition) {
-            const newQuantity = existingPosition.quantity + data.quantity;
-            const newAveragePrice = ((existingPosition.quantity * parseFloat(existingPosition.average_price)) + (data.quantity * data.price)) / newQuantity;
+            const existingResult = await client.query(
+              'SELECT id, quantity, average_price FROM portfolio WHERE user_id = $1 AND stock_id = $2',
+              [userId, data.stockId]
+            );
+            const existing = existingResult.rows[0];
 
-            db.prepare(`
-              UPDATE portfolio SET quantity = ?, average_price = ?, updated_at = CURRENT_TIMESTAMP
-              WHERE user_id = ? AND stock_id = ?
-            `).run(newQuantity, newAveragePrice, userId, data.stockId);
-          } else {
-            db.prepare(`
-              INSERT INTO portfolio (user_id, stock_id, quantity, average_price)
-              VALUES (?, ?, ?, ?)
-            `).run(userId, data.stockId, data.quantity, data.price);
+            if (existing) {
+              const newQty = existing.quantity + data.quantity;
+              const newAvg = ((existing.quantity * parseFloat(existing.average_price)) + (data.quantity * data.price)) / newQty;
+              await client.query(`
+                UPDATE portfolio SET quantity = $1, average_price = $2, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = $3 AND stock_id = $4
+              `, [newQty, newAvg, userId, data.stockId]);
+            } else {
+              await client.query(`
+                INSERT INTO portfolio (user_id, stock_id, quantity, average_price) VALUES ($1, $2, $3, $4)
+              `, [userId, data.stockId, data.quantity, data.price]);
+            }
+
+            // BUG #4 CORRIGIDO: registra balance_after e descrição em português com símbolo
+            const balanceResult = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
+            const balanceAfter = parseFloat(balanceResult.rows[0].balance);
+
+            await client.query(`
+              INSERT INTO transactions (user_id, type, amount, description, balance_after)
+              VALUES ($1, 'BUY', $2, $3, $4)
+            `, [
+              userId, total,
+              `[${relogioStr}] Compra de ${data.quantity} ações de ${stock.symbol} a R$ ${data.price.toFixed(2)}`,
+              balanceAfter
+            ]);
+
+          } else if (data.type === 'SELL') {
+            await client.query(
+              'UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+              [total, userId]
+            );
+
+            await client.query(`
+              UPDATE portfolio SET quantity = quantity - $1, updated_at = CURRENT_TIMESTAMP
+              WHERE user_id = $2 AND stock_id = $3
+            `, [data.quantity, userId, data.stockId]);
+
+            // Remove posição zerada
+            await client.query(`
+              DELETE FROM portfolio WHERE user_id = $1 AND stock_id = $2 AND quantity <= 0
+            `, [userId, data.stockId]);
+
+            const balanceResult = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
+            const balanceAfter = parseFloat(balanceResult.rows[0].balance);
+
+            await client.query(`
+              INSERT INTO transactions (user_id, type, amount, description, balance_after)
+              VALUES ($1, 'SELL', $2, $3, $4)
+            `, [
+              userId, total,
+              `[${relogioStr}] Venda de ${data.quantity} ações de ${stock.symbol} a R$ ${data.price.toFixed(2)}`,
+              balanceAfter
+            ]);
           }
-
-          // Record transaction
-          db.prepare(`
-            INSERT INTO transactions (user_id, type, amount, description)
-            VALUES (?, ?, ?, ?)
-          `).run(userId, 'BUY', total, `Comprar ${data.quantity} ações de ID ${data.stockId}`);
-        } else if (data.type === 'SELL') {
-          // Update user balance
-          db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?')
-            .run(total, userId);
-
-          // Update portfolio position
-          db.prepare(`
-            UPDATE portfolio SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ? AND stock_id = ?
-          `).run(data.quantity, userId, data.stockId);
-
-          // Record transaction
-          db.prepare(`
-            INSERT INTO transactions (user_id, type, amount, description)
-            VALUES (?, ?, ?, ?)
-          `).run(userId, 'SELL', total, `Vender ${data.quantity} ações de ID ${data.stockId}`);
         }
+
+        return orderId;
       });
 
-      transaction();
-
       return {
-        id: 1, // Would be the actual order ID from DB
-        message: `Ordem de ${data.type} criada com sucesso`,
+        id: orderId,
+        message: status === 'PENDING'
+          ? `Ordem ${data.type === 'BUY' ? 'de compra' : 'de venda'} condicional registrada`
+          : `${data.type === 'BUY' ? 'Compra' : 'Venda'} executada com sucesso`,
         type: data.type,
+        status,
         quantity: data.quantity,
         price: data.price,
+        limitPrice: data.limitPrice ?? null,
         total
       };
     } catch (error) {
@@ -156,39 +188,33 @@ export class OrderService {
     }
   }
 
-  static getOrderHistory(userId: number, stockId?: number, limit: number = 50, offset: number = 0) {
+  static async getOrderHistory(userId: number, stockId?: number, limit: number = 50, offset: number = 0) {
     try {
-      let query = `
+      let sql = `
         SELECT 
-          o.id,
-          o.stock_id,
-          s.symbol,
-          s.name,
-          o.type,
-          o.quantity,
-          o.price,
-          o.total,
-          o.status,
-          o.created_at,
-          o.updated_at
+          o.id, o.stock_id, s.symbol, s.name,
+          o.type, o.quantity, o.price, o.limit_price,
+          o.total, o.status, o.created_at, o.updated_at
         FROM orders o
         JOIN stocks s ON o.stock_id = s.id
-        WHERE o.user_id = ?
+        WHERE o.user_id = $1
       `;
 
       const params: any[] = [userId];
 
       if (stockId) {
-        query += ' AND o.stock_id = ?';
         params.push(stockId);
+        sql += ` AND o.stock_id = $${params.length}`;
       }
 
-      query += ' ORDER BY o.created_at DESC LIMIT ? OFFSET ?';
-      params.push(limit, offset);
+      params.push(limit);
+      sql += ` ORDER BY o.created_at DESC LIMIT $${params.length}`;
+      params.push(offset);
+      sql += ` OFFSET $${params.length}`;
 
-      const orders = db.prepare(query).all(...params) as any[];
+      const result = await dbQuery(sql, params);
 
-      return orders.map(o => ({
+      return result.rows.map(o => ({
         id: o.id,
         stockId: o.stock_id,
         symbol: o.symbol,
@@ -196,6 +222,7 @@ export class OrderService {
         type: o.type,
         quantity: o.quantity,
         price: parseFloat(o.price),
+        limitPrice: o.limit_price ? parseFloat(o.limit_price) : null,
         total: parseFloat(o.total),
         status: o.status,
         createdAt: o.created_at,
@@ -205,5 +232,10 @@ export class OrderService {
       logger.error('Erro ao obter histórico de ordens:', error);
       throw error;
     }
+  }
+
+  private static formatarHora(minuto: number): string {
+    const total = 14 * 60 + minuto;
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
   }
 }

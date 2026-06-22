@@ -1,5 +1,5 @@
-import db from '../config/database.js';
-import { StockService} from './stockService.js';
+import { dbQuery, withTransaction } from '../config/database.js';
+import { StockService, PrecoTicker } from './stockService.js';
 import logger from '../utils/logger.js';
 
 export class RelogioServico {
@@ -17,7 +17,8 @@ export class RelogioServico {
     precosConsultados: number;
     ordenasExecutadas: number[];
   }> {
-    const user = db.prepare('SELECT clock_minute FROM users WHERE id = ?').get(userId) as any;
+    const userResult = await dbQuery('SELECT clock_minute FROM users WHERE id = $1', [userId]);
+    const user = userResult.rows[0];
     if (!user) throw new Error('Usuário não encontrado');
 
     const minutoAnterior: number = user.clock_minute ?? 0;
@@ -29,11 +30,13 @@ export class RelogioServico {
     for (const p of precos) precoMap[p.ticker] = p.preco;
 
     // Avança o relógio do usuário
-    db.prepare('UPDATE users SET clock_minute = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(novoMinuto, userId);
+    await dbQuery(
+      'UPDATE users SET clock_minute = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [novoMinuto, userId]
+    );
 
     // Processa ordens pendentes do usuário com os preços recebidos da API do professor
-    const ordenasExecutadas = RelogioServico.processarOrdensPendentes(userId, precoMap, novoMinuto);
+    const ordenasExecutadas = await RelogioServico.processarOrdensPendentes(userId, precoMap, novoMinuto);
 
     const horaFormatada = RelogioServico.formatarHora(novoMinuto);
 
@@ -54,7 +57,8 @@ export class RelogioServico {
    * com base no minuto atual do usuário.
    */
   static async getEstado(userId: number) {
-    const user = db.prepare('SELECT clock_minute FROM users WHERE id = ?').get(userId) as any;
+    const userResult = await dbQuery('SELECT clock_minute FROM users WHERE id = $1', [userId]);
+    const user = userResult.rows[0];
     if (!user) throw new Error('Usuário não encontrado');
 
     const minuto: number = user.clock_minute ?? 0;
@@ -66,15 +70,15 @@ export class RelogioServico {
     for (const p of precos) precoMap[p.ticker] = p.preco;
 
     // Tickers da watchlist do usuário
-    const watchlist = db.prepare(`
+    const watchlistResult = await dbQuery(`
       SELECT s.symbol, s.closing_price as fechamento
       FROM watchlist w
       JOIN stocks s ON w.stock_id = s.id
-      WHERE w.user_id = ?
+      WHERE w.user_id = $1
       ORDER BY s.symbol
-    `).all(userId) as any[];
+    `, [userId]);
 
-    const acoes = watchlist.map(a => {
+    const acoes = watchlistResult.rows.map(a => {
       const preco = precoMap[a.symbol] ?? parseFloat(a.fechamento);
       const fechamento = parseFloat(a.fechamento);
       const variacaoNominal = preco - fechamento;
@@ -98,18 +102,19 @@ export class RelogioServico {
     return `${String(Math.floor(totalMinutos / 60)).padStart(2, '0')}:${String(totalMinutos % 60).padStart(2, '0')}`;
   }
 
-  private static processarOrdensPendentes(
+  private static async processarOrdensPendentes(
     userId: number,
     precoMap: Record<string, number>,
     novoMinuto: number
-  ): number[] {
-    const pendentes = db.prepare(`
+  ): Promise<number[]> {
+    const pendentesResult = await dbQuery(`
       SELECT o.id, o.stock_id, s.symbol, o.type, o.quantity, o.limit_price
       FROM orders o
       JOIN stocks s ON o.stock_id = s.id
-      WHERE o.user_id = ? AND o.status = 'PENDING'
-    `).all(userId) as any[];
+      WHERE o.user_id = $1 AND o.status = 'PENDING'
+    `, [userId]);
 
+    const pendentes = pendentesResult.rows;
     const executadas: number[] = [];
     const relogioStr = RelogioServico.formatarHora(novoMinuto);
 
@@ -128,85 +133,98 @@ export class RelogioServico {
         const total = order.quantity * precoAtual;
 
         if (order.type === 'BUY') {
-          const userRow = db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any;
-          if (parseFloat(userRow.balance) < total) {
-            db.prepare(`UPDATE orders SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-              .run(order.id);
+          const userRowResult = await dbQuery('SELECT balance FROM users WHERE id = $1', [userId]);
+          if (parseFloat(userRowResult.rows[0].balance) < total) {
+            await dbQuery(
+              `UPDATE orders SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+              [order.id]
+            );
             logger.warn(`Ordem ${order.id} cancelada: saldo insuficiente`);
             continue;
           }
         } else {
-          const pos = db.prepare('SELECT quantity FROM portfolio WHERE user_id = ? AND stock_id = ?')
-            .get(userId, order.stock_id) as any;
+          const posResult = await dbQuery(
+            'SELECT quantity FROM portfolio WHERE user_id = $1 AND stock_id = $2',
+            [userId, order.stock_id]
+          );
+          const pos = posResult.rows[0];
           if (!pos || pos.quantity < order.quantity) {
-            db.prepare(`UPDATE orders SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-              .run(order.id);
+            await dbQuery(
+              `UPDATE orders SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+              [order.id]
+            );
             logger.warn(`Ordem ${order.id} cancelada: ações insuficientes`);
             continue;
           }
         }
 
-        db.transaction(() => {
-          db.prepare(`
-            UPDATE orders SET status = 'EXECUTED', price = ?, total = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).run(precoAtual, total, order.id);
+        await withTransaction(async (client) => {
+          await client.query(`
+            UPDATE orders SET status = 'EXECUTED', price = $1, total = $2, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $3
+          `, [precoAtual, total, order.id]);
 
           if (order.type === 'BUY') {
-            db.prepare('UPDATE users SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-              .run(total, userId);
+            await client.query(
+              'UPDATE users SET balance = balance - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+              [total, userId]
+            );
 
-            const posExistente = db.prepare(
-              'SELECT id, quantity, average_price FROM portfolio WHERE user_id = ? AND stock_id = ?'
-            ).get(userId, order.stock_id) as any;
+            const existingResult = await client.query(
+              'SELECT id, quantity, average_price FROM portfolio WHERE user_id = $1 AND stock_id = $2',
+              [userId, order.stock_id]
+            );
+            const posExistente = existingResult.rows[0];
 
             if (posExistente) {
               const newQty = posExistente.quantity + order.quantity;
               const newAvg = ((posExistente.quantity * parseFloat(posExistente.average_price)) +
                 (order.quantity * precoAtual)) / newQty;
-              db.prepare(`
-                UPDATE portfolio SET quantity = ?, average_price = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = ? AND stock_id = ?
-              `).run(newQty, newAvg, userId, order.stock_id);
+              await client.query(`
+                UPDATE portfolio SET quantity = $1, average_price = $2, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = $3 AND stock_id = $4
+              `, [newQty, newAvg, userId, order.stock_id]);
             } else {
-              db.prepare(`
-                INSERT INTO portfolio (user_id, stock_id, quantity, average_price) VALUES (?, ?, ?, ?)
-              `).run(userId, order.stock_id, order.quantity, precoAtual);
+              await client.query(`
+                INSERT INTO portfolio (user_id, stock_id, quantity, average_price) VALUES ($1, $2, $3, $4)
+              `, [userId, order.stock_id, order.quantity, precoAtual]);
             }
 
-            const balanceAfter = parseFloat(
-              (db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any).balance
-            );
-            db.prepare(`
+            const balanceResult = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
+            const balanceAfter = parseFloat(balanceResult.rows[0].balance);
+
+            await client.query(`
               INSERT INTO transactions (user_id, type, amount, description, balance_after)
-              VALUES (?, 'BUY', ?, ?, ?)
-            `).run(
+              VALUES ($1, 'BUY', $2, $3, $4)
+            `, [
               userId, total,
               `[${relogioStr}] Compra condicional de ${order.quantity} ações de ${order.symbol} a R$ ${precoAtual.toFixed(2)}`,
               balanceAfter
-            );
+            ]);
 
           } else {
-            db.prepare('UPDATE users SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-              .run(total, userId);
-            db.prepare(`
-              UPDATE portfolio SET quantity = quantity - ?, updated_at = CURRENT_TIMESTAMP
-              WHERE user_id = ? AND stock_id = ?
-            `).run(order.quantity, userId, order.stock_id);
-
-            const balanceAfter = parseFloat(
-              (db.prepare('SELECT balance FROM users WHERE id = ?').get(userId) as any).balance
+            await client.query(
+              'UPDATE users SET balance = balance + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+              [total, userId]
             );
-            db.prepare(`
+            await client.query(`
+              UPDATE portfolio SET quantity = quantity - $1, updated_at = CURRENT_TIMESTAMP
+              WHERE user_id = $2 AND stock_id = $3
+            `, [order.quantity, userId, order.stock_id]);
+
+            const balanceResult = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
+            const balanceAfter = parseFloat(balanceResult.rows[0].balance);
+
+            await client.query(`
               INSERT INTO transactions (user_id, type, amount, description, balance_after)
-              VALUES (?, 'SELL', ?, ?, ?)
-            `).run(
+              VALUES ($1, 'SELL', $2, $3, $4)
+            `, [
               userId, total,
               `[${relogioStr}] Venda condicional de ${order.quantity} ações de ${order.symbol} a R$ ${precoAtual.toFixed(2)}`,
               balanceAfter
-            );
+            ]);
           }
-        })();
+        });
 
         executadas.push(order.id);
         logger.info(`Ordem ${order.id} (${order.type} ${order.symbol}) executada a R$ ${precoAtual} [preço via API do professor]`);
