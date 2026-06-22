@@ -50,7 +50,7 @@ export class WatchlistService {
         };
       });
     } catch (error) {
-      logger.error('Get watchlist error:', error);
+      logger.error('Erro ao obter lista de cotações:', error);
       throw error;
     }
   }
@@ -76,7 +76,7 @@ export class WatchlistService {
         message: 'Ação adicionada à watchlist'
       };
     } catch (error) {
-      logger.error('Add to watchlist error:', error);
+      logger.error('Erro ao adicionar à lista de cotações:', error);
       throw error;
     }
   }
@@ -93,7 +93,7 @@ export class WatchlistService {
 
       return { message: 'Ação removida da watchlist' };
     } catch (error) {
-      logger.error('Remove from watchlist error:', error);
+      logger.error('Erro ao remover da lista de cotações:', error);
       throw error;
     }
   }

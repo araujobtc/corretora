@@ -15,6 +15,7 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
 
     const result = await OrderService.getOrders(req.userId, limit, offset);
     res.status(200).json(result);
+
   } catch (error) {
     logger.error('Erro ao buscar ordens:', error);
     res.status(400).json({

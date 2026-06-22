@@ -41,7 +41,7 @@ export class OrderService {
         offset
       };
     } catch (error) {
-      logger.error('Get orders error:', error);
+      logger.error('Erro ao obter ordens:', error);
       throw error;
     }
   }
@@ -183,7 +183,7 @@ export class OrderService {
         total
       };
     } catch (error) {
-      logger.error('Create order error:', error);
+      logger.error('Erro ao criar ordem:', error);
       throw error;
     }
   }
@@ -229,7 +229,7 @@ export class OrderService {
         updatedAt: o.updated_at
       }));
     } catch (error) {
-      logger.error('Get order history error:', error);
+      logger.error('Erro ao obter histórico de ordens:', error);
       throw error;
     }
   }

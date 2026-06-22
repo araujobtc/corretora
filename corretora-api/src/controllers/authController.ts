@@ -7,7 +7,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const result = await AuthService.register(req.body);
     res.status(201).json(result);
   } catch (error) {
-    logger.error('Register error:', error);
+
+    logger.error('Erro de cadastro:', error);
+
     res.status(400).json({ error: error instanceof Error ? error.message : 'Falha no cadastro' });
   }
 };
@@ -17,7 +19,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const result = await AuthService.login(req.body);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Login error:', error);
+
+    logger.error('Erro de login:', error);
+
     res.status(401).json({ error: error instanceof Error ? error.message : 'Falha no login' });
   }
 };
@@ -28,7 +32,8 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
     const result = await AuthService.changePassword(req.userId, req.body);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Change password error:', error);
+
+    logger.error('Erro ao alterar senha:', error);
     res.status(400).json({ error: error instanceof Error ? error.message : 'Falha ao alterar senha' });
   }
 };
@@ -39,8 +44,9 @@ export const requestPasswordReset = async (req: Request, res: Response): Promise
     const result = await AuthService.requestPasswordReset(req.body.email);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Request password reset error:', error);
+    logger.error('Erro ao solicitar a redefinição de senha:', error);
     res.status(500).json({ error: 'Falha ao processar solicitação. Tente novamente.' });
+
   }
 };
 
@@ -51,7 +57,9 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
     const result = await AuthService.resetPassword(token, newPassword);
     res.status(200).json(result);
   } catch (error) {
-    logger.error('Reset password error:', error);
+
+    logger.error('Erro ao redefinir senha:', error);
+
     res.status(400).json({ error: error instanceof Error ? error.message : 'Falha ao redefinir senha' });
   }
 };

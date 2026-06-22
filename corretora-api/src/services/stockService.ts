@@ -23,12 +23,15 @@ async function fetchTickers(): Promise<Ticker[]> {
   if (tickersCache && now - tickersCacheAt < CACHE_TTL_MS) return tickersCache;
 
   const url = `${PROFESSOR_BASE}/tickers.json`;
-  logger.info(`Buscando tickers do professor: ${url}`);
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Falha ao buscar tickers: ${resp.status}`);
+
+  if (!resp.ok) {
+    throw new Error(`Falha ao buscar tickers: ${resp.status}`);
+  }
 
   tickersCache = (await resp.json()) as Ticker[];
   tickersCacheAt = now;
+
   return tickersCache;
 }
 
@@ -63,7 +66,7 @@ export class StockService {
       })),
       total: parseInt(countResult.rows[0].count, 10),
       limit,
-      offset,
+      offset
     };
   }
 
@@ -109,20 +112,31 @@ export class StockService {
     }));
   }
 
-  /** Retorna os preços do pregão para um minuto específico (0–59) */
   static async getPricesByMinuto(minuto: number): Promise<PrecoTicker[]> {
     const url = `${PROFESSOR_BASE}/${minuto}.json`;
+
     logger.info(`Buscando preços do minuto ${minuto}: ${url}`);
+
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Falha ao buscar preços do minuto ${minuto}: ${resp.status}`);
+
+    if (!resp.ok) {
+      throw new Error(`Falha ao buscar preços do minuto ${minuto}`);
+    }
+
     return (await resp.json()) as PrecoTicker[];
   }
 
-  /** Retorna o preço atual de um ticker em um minuto específico */
-  static async getPriceBySymbolAndMinuto(symbol: string, minuto: number) {
-    const precos = await StockService.getPricesByMinuto(minuto);
-    const entry = precos.find(p => p.ticker.toUpperCase() === symbol.toUpperCase());
-    if (!entry) throw new Error(`Ticker ${symbol} não encontrado no minuto ${minuto}`);
-    return entry;
+  static async getPriceBySymbolAndMinuto(symbol: string, minuto: number): Promise<PrecoTicker> {
+    const precos = await this.getPricesByMinuto(minuto);
+
+    const preco = precos.find(
+      p => p.ticker.toUpperCase() === symbol.toUpperCase()
+    );
+
+    if (!preco) {
+      throw new Error('Preço não encontrado');
+    }
+
+    return preco;
   }
 }

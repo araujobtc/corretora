@@ -29,7 +29,7 @@ export class AuthService {
 
       return { id: userId, name: data.name, email: data.email, balance: 0, token };
     } catch (error) {
-      logger.error('Register error:', error);
+      logger.error('Erro ao registrar usuário:', error);
       throw error;
     }
   }
@@ -75,6 +75,7 @@ export class AuthService {
       const isValid = bcrypt.compareSync(data.password, user.password_hash);
       if (!isValid) throw new Error('E-mail ou senha inválidos');
 
+
       const token = generateToken(user.id, user.email, user.name);
 
       return {
@@ -85,7 +86,7 @@ export class AuthService {
         token,
       };
     } catch (error) {
-      logger.error('Login error:', error);
+      logger.error('Erro ao fazer login:', error);
       throw error;
     }
   }
@@ -107,7 +108,7 @@ export class AuthService {
 
       return { message: 'Senha alterada com sucesso' };
     } catch (error) {
-      logger.error('Change password error:', error);
+      logger.error('Erro ao alterar senha:', error);
       throw error;
     }
   }
@@ -118,7 +119,9 @@ export class AuthService {
       const user = result.rows[0];
 
       if (!user) {
-        return { message: 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.' };
+
+        // Don't reveal if email exists or not for security
+        return { message: 'Se o email existe, um link de recuperação de senha foi enviado' };
       }
 
       await dbQuery(
@@ -140,7 +143,7 @@ export class AuthService {
 
       return { message: 'Se o e-mail estiver cadastrado, você receberá as instruções em breve.' };
     } catch (error) {
-      logger.error('Request password reset error:', error);
+      logger.error('Erro ao solicitar a redefinição de senha:', error);
       throw error;
     }
   }
@@ -170,8 +173,9 @@ export class AuthService {
       });
 
       return { message: 'Senha redefinida com sucesso. Faça login com sua nova senha.' };
+      
     } catch (error) {
-      logger.error('Reset password error:', error);
+      logger.error('Erro ao redefinir senha:', error);
       throw error;
     }
   }
